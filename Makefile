@@ -1,7 +1,7 @@
 CC=g++
 CFLAGS=-c -Wall
 LDFLAGS=
-SOURCES=city.cpp name_tree_entry.cpp name_tree.cpp
+SOURCES=city.cpp name-tree-entry.cpp name-tree.cpp
 OBJECTS=$(SOURCES:.cpp=.o)
 EXECUTABLE=npht
 

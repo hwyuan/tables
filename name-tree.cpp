@@ -11,12 +11,11 @@
 TODO:
 
 DONE 			0. add namespace nfd 
-Need discussion 1. convert to use TLV Name instead of strings
+In progress 	1. convert to use TLV Name instead of strings
 In progress 	2. unit testing
-In progress 	3. follow the new coding style
-TODO			4. may consier using some hash function from a library
-DONE 			5. add LPM function by calling the lookup() function
-DONE 			6. add full / partial enumeration function
+TODO			3. use hash table from boost library
+DONE 			4. add LPM function by calling the lookup() function
+DONE 			5. add children pointers and full / partial enumeration function
 
 */
 
@@ -445,7 +444,6 @@ int test()
 
 	npe = nt->lookup("/a/b/c/");
 	if(npe) cout << "/a/b/c/ exist = " << npe->m_prefix << endl;
-
 
 	npe = nt->lookup("/a/b/c/d/e/f/g/");
 	if(npe){

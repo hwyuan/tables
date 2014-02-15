@@ -55,6 +55,40 @@ NamePrefixEntry::~NamePrefixEntry()
 {
 }
 
+// Need to figure out the return value
+int
+NamePrefixEntry::setFIBEntry(FIBEntry * fib){
+	m_fib = fib;
+	return 0;
+}
+
+int
+NamePrefixEntry::addPITEntry(PITEntry * pit){
+	m_pitHead.push_back(pit);
+
+	return 0;
+}
+
+int
+NamePrefixEntry::deletePITEntry(PITEntry * pit){
+	// delete this PIT
+
+	// XXXX FIXME: check if this NPE can be deleted
+	// basically, if there is nothing left in the NPE, this NPE needs to be deleted
+	// And deleting this NPE may results in its parents also being deleted.
+	// - Can be handled by calling the NT's deletePrefix() method
+	// - But need to decide if we are going to call this method here or in PIT
+	// - At the moment, it seems that calling the method in PIT is more reasonable
+
+	return 0;
+}
+
+int
+NamePrefixEntry::getPITCount(){
+	return (int)m_pitHead.size(); // convert size_t to int
+}
+
+
 void
 NamePrefixEntry::setHash(uint32_t hash)
 {

@@ -52,10 +52,16 @@ public:
 	getPrefix();
 
 	int 
-	addFIBEntry();
+	setFIBEntry(FIBEntry * fib);
 
 	int 
-	addPITEntry();
+	addPITEntry(PITEntry * pit);
+
+	int 
+	deletePITEntry(PITEntry * pit);
+
+	int
+	getPITCount();
 
 	void
 	setHash(uint32_t hash);
