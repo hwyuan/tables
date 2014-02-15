@@ -13,13 +13,15 @@
 
 */
 
-#ifndef NFD_TABLE_NAMETREE_ENTRY_HPP
-#define NFD_TABLE_NAMETREE_ENTRY_HPP
+#ifndef NFD_TABLE_NAME_TREE_ENTRY_HPP
+#define NFD_TABLE_NAME_TREE_ENTRY_HPP
 
 #include <iostream>
 #include <string>
+#include <vector>
+#include <stdint.h>
 
-// namespace nfd{
+namespace nfd{
 
 class FIBEntry
 {
@@ -39,7 +41,8 @@ public:
 private:
 };
 
-class NamePrefixEntry	// NameTreeEntry
+
+class NamePrefixEntry	// NamePrefixEntry
 {
 public:
 	NamePrefixEntry(const std::string prefix);
@@ -76,18 +79,19 @@ public:
 	uint32_t m_hash;
 	uint32_t m_children;				// It is safe to delete an entry only if its children == 0
 	NamePrefixEntry * m_parent;			// Pointing to the parent entry.
+	std::vector<NamePrefixEntry *> m_childrenList; // Children pointers.
 	NamePrefixEntry * m_pre;
 	NamePrefixEntry * m_next;			// Use chaining to resolve hash collisions.
 	FIBEntry * m_fib;
-	PITEntry * m_pitHead;
+	std::vector<PITEntry *> m_pitHead;
 
 private:
 
 };
 
-// } // namespace nfd
+} // namespace nfd
 
-#endif // NFD_TABLE_NAMETREE_ENTRY_HPP
+#endif // NFD_TABLE_NAME_TREE_ENTRY_HPP
 
 
 

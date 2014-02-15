@@ -16,59 +16,81 @@ TODO:
 */
 
 
-#include "name_tree_entry.hpp"
+#include "name-tree-entry.hpp"
 #include <algorithm>
 #include <iostream>
 
-// namespace nfd{
+namespace nfd{
 
-NamePrefixEntry::NamePrefixEntry(const std::string prefix){
+FIBEntry::FIBEntry()
+{
+}
 
-	// cout << "inserting " << prefix << endl;
+FIBEntry::~FIBEntry()
+{
+}
+
+PITEntry::PITEntry()
+{
+}
+
+PITEntry::~PITEntry()
+{
+}
+
+NamePrefixEntry::NamePrefixEntry(const std::string prefix)
+{
 	m_hash = 0;
 	m_children = 0;
 	m_prefix = prefix;
 	m_parent = NULL;
+	m_childrenList.clear();
 	m_pre = NULL;
 	m_next = NULL;
 	m_fib = NULL;
-	m_pitHead = NULL;
-	// cout << "done" << endl;
+	m_pitHead.clear();
 }
 
-NamePrefixEntry::~NamePrefixEntry(){
+NamePrefixEntry::~NamePrefixEntry()
+{
 }
 
 void
-NamePrefixEntry::setHash(uint32_t hash){
+NamePrefixEntry::setHash(uint32_t hash)
+{
 	m_hash = hash;
 }
 
 uint32_t
-NamePrefixEntry::getHash(){
+NamePrefixEntry::getHash()
+{
 	return m_hash;
 }
 
 
 void
-NamePrefixEntry::setNext(NamePrefixEntry * next){
+NamePrefixEntry::setNext(NamePrefixEntry * next)
+{
 	m_next = next;
 }
 
 void
-NamePrefixEntry::setParent(NamePrefixEntry * parent){
+NamePrefixEntry::setParent(NamePrefixEntry * parent)
+{
 	m_parent = parent;
 }
 
 NamePrefixEntry *
-NamePrefixEntry::getNext(){
+NamePrefixEntry::getNext()
+{
 	return m_next;
 }
 
 NamePrefixEntry *
-NamePrefixEntry::getParent(){
+NamePrefixEntry::getParent()
+{
 	return m_parent;
 }
 
-// } // namespace nfd
+} // namespace nfd
 

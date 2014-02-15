@@ -13,15 +13,14 @@ TODO:
 
 */
 
-// namespace nfd{
 
 #ifndef NFD_TABLE_NAME_TREE_HPP
 #define NFD_TABLE_NAME_TREE_HPP
 
 #include <iostream>
-#include "name_tree_entry.hpp"
+#include "name-tree-entry.hpp"
 
-using namespace std;
+namespace nfd{
 
 /** \class NameTree
  *  \brief represents the Name Prefix Hash Table
@@ -65,6 +64,10 @@ public:
 	NamePrefixEntry * 
 	lookup(std::string prefix);
 
+	// NameTree Longest Prefix Lookup
+	NamePrefixEntry *
+	lpm(std::string prefix);
+
 
 	// Hash Table Resize
 	void
@@ -95,6 +98,16 @@ public:
 	int
 	getBucketContent(int index);
 
+	// Enumerate all the non-empty NPHT entries
+	void
+	fullEnumerate();
+
+	// Enumerate all the children of a specified prefix
+	void
+	partialEnumerate(std::string prefix);
+
+
+
 	// Dump the Name Tree for debugging
 	void 
 	dump();
@@ -105,7 +118,7 @@ private:
 	NameTreeNode * m_buckets; // Name Tree Buckets in the NPHT
  };
 
-// } // namespace nfd
+} // namespace nfd
 
 #endif // NFD_TABLE_NAME_TREE_HPP
 
