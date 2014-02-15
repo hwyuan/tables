@@ -9,8 +9,12 @@
 /*
 
 TODO:
-1. add namespace nfd
+0. add namespace nfd
+1. convert to use TLV Name instead of strings
 2. unit testing
+3. follow the new coding style
+4. add LPM function by calling the lookup() function
+5. may consier using some hash function from a library
 
 */
 
@@ -75,7 +79,6 @@ NameTree::~NameTree()
 }
 
 
-// If not found, then insert
 int
 NameTree::insert(string prefix, NamePrefixEntry ** ret_npe){
 
@@ -183,6 +186,7 @@ NameTree::resize(int newNBuckets){
 
 // Name Prefix Seek
 // Build the NPHT with parent pointers
+// Lookup each name prefix, if the name prefix does not exit, then create the node.
 int 
 NameTree::seek(string prefix){
 

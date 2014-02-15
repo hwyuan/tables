@@ -8,6 +8,8 @@
 /*
 
 TODO:
+1. add namespace nfd
+2. currenlty, all the class members are in public, some of them should be moved to private 
 
 */
 
@@ -28,9 +30,6 @@ class NameTreeNode
 public:
 	NameTreeNode();
 	~NameTreeNode();
-
-	// size_t
-	// getHash();
 
 	void 
 	destory();

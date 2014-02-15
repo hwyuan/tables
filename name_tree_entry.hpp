@@ -4,6 +4,14 @@
  * See COPYING for copyright and distribution information.
  */
 
+/*
+
+ TODO:
+1. add namespace nfd
+2. currenlty, all the class members are in public, some of them should be moved to private 
+
+*/
+
 #ifndef NFD_TABLE_NAMETREE_ENTRY_HPP
 #define NFD_TABLE_NAMETREE_ENTRY_HPP
 
