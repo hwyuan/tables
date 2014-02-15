@@ -13,6 +13,7 @@ TODO:
 
 */
 
+// namespace nfd{
 
 #ifndef NFD_TABLE_NAME_TREE_HPP
 #define NFD_TABLE_NAME_TREE_HPP
@@ -20,6 +21,7 @@ TODO:
 #include <iostream>
 #include "name_tree_entry.hpp"
 
+using namespace std;
 
 /** \class NameTree
  *  \brief represents the Name Prefix Hash Table
@@ -53,15 +55,15 @@ public:
 
 	// NameTree Insert
 	int
-	insert(string prefix, NamePrefixEntry ** ret_npe);
+	insert(std::string prefix, NamePrefixEntry ** ret_npe);
 
 	// NameTree Delete
 	int
-	deletePrefix(string prefix);
+	deletePrefix(std::string prefix);
 
 	// NameTree Lookup
 	NamePrefixEntry * 
-	lookup(string prefix);
+	lookup(std::string prefix);
 
 
 	// Hash Table Resize
@@ -71,11 +73,11 @@ public:
 
 	// NameTree Seek
 	int
-	seek(string prefix);
+	seek(std::string prefix);
 
 	// NameTree Seek, insert all the proper prefixes and build the parent pointers.
 	int
-	nameTreeSeek(string prefix);
+	nameTreeSeek(std::string prefix);
 
 	// Resize the hash table
 	int
@@ -103,7 +105,8 @@ private:
 	NameTreeNode * m_buckets; // Name Tree Buckets in the NPHT
  };
 
-#endif // NFD_TABLE_NAME_TREE_HPP
+// } // namespace nfd
 
+#endif // NFD_TABLE_NAME_TREE_HPP
 
 

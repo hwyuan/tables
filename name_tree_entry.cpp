@@ -11,8 +11,8 @@
 TODO:
 1. namespace nfd
 2. name components
+3. addFIB, addPIT
 
-- Haowei
 */
 
 
@@ -20,9 +20,9 @@ TODO:
 #include <algorithm>
 #include <iostream>
 
-using namespace std;
+// namespace nfd{
 
-NamePrefixEntry::NamePrefixEntry(const string prefix){
+NamePrefixEntry::NamePrefixEntry(const std::string prefix){
 
 	// cout << "inserting " << prefix << endl;
 	m_hash = 0;
@@ -69,4 +69,6 @@ NamePrefixEntry *
 NamePrefixEntry::getParent(){
 	return m_parent;
 }
+
+// } // namespace nfd
 

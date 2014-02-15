@@ -28,8 +28,9 @@ TODO:
 #include "name_tree.hpp"
 #include "city.hpp"
 
-using namespace std;
+// using namespace std;
 
+// namespace nfd{
 
 #define HT_OLD_ENTRY 0
 #define HT_NEW_ENTRY 1
@@ -60,7 +61,7 @@ NameTreeNode::destory()
 
 NameTree::NameTree(int nBuckets)
 {	
-	if(debug) cout << "Name::Tree()" << endl;
+	if(debug) std::cout << "Name::Tree()" << std::endl;
 	m_n = 0;
 	m_nBuckets = nBuckets;
 	m_buckets = new NameTreeNode[m_nBuckets];
@@ -80,12 +81,12 @@ NameTree::~NameTree()
 
 
 int
-NameTree::insert(string prefix, NamePrefixEntry ** ret_npe){
+NameTree::insert(std::string prefix, NamePrefixEntry ** ret_npe){
 
 	uint32_t hashValue = CityHash32(prefix.c_str(), prefix.length());
 	uint32_t loc = hashValue % m_nBuckets;
 
-	if(debug) cout << "string " << prefix << " hash value = " << hashValue << "  loc = " << loc << endl;
+	if(debug) std::cout << "string " << prefix << " hash value = " << hashValue << "  loc = " << loc << std::endl;
 
 	// First see if this string is already stored
 	NamePrefixEntry * temp = m_buckets[loc].m_npeHead;
@@ -124,7 +125,7 @@ NameTree::insert(string prefix, NamePrefixEntry ** ret_npe){
 void
 NameTree::resize(int newNBuckets){
 
-	if(debug) cout << "NameTree::resize()" << endl;
+	if(debug) std::cout << "NameTree::resize()" << std::endl;
 
 	// dump();
 
@@ -172,7 +173,7 @@ NameTree::resize(int newNBuckets){
 	}
 
 	if(count != m_n){
-		cout << "Error" << endl;
+		std::cout << "Error" << std::endl;
 		exit(1);
 	}
 
@@ -188,7 +189,7 @@ NameTree::resize(int newNBuckets){
 // Build the NPHT with parent pointers
 // Lookup each name prefix, if the name prefix does not exit, then create the node.
 int 
-NameTree::seek(string prefix){
+NameTree::seek(std::string prefix){
 
 	std::vector<std::string> strs;
 	boost::split(strs, prefix, boost::is_any_of("/"));
@@ -197,10 +198,10 @@ NameTree::seek(string prefix){
 	NamePrefixEntry * parent = NULL;
 
 
-	string endMark = "/";
+	std::string endMark = "/";
 	int end = boost::algorithm::ends_with(prefix, endMark);
 
-	string temp = "";
+	std::string temp = "";
 	for(size_t i = 0; i < strs.size()-end; i++){
 		temp += strs[i]; 
 		temp += "/";
@@ -226,16 +227,16 @@ NameTree::seek(string prefix){
 
 // Return the address of the node that contains this prefix; return NULL if not found
 NamePrefixEntry* 
-NameTree::lookup(string prefix){
+NameTree::lookup(std::string prefix){
 	uint32_t hashValue = CityHash32(prefix.c_str(), prefix.length());
 	uint32_t loc = hashValue % m_nBuckets;
 
-	if(debug > 4) cout << "string " << prefix << " hash value = " << hashValue << "  loc = " << loc << endl;
+	if(debug > 4) std::cout << "string " << prefix << " hash value = " << hashValue << "  loc = " << loc << std::endl;
 
 	NamePrefixEntry * ret = m_buckets[loc].m_npeHead;
 	while(ret != NULL){
 		if(hashValue == ret->getHash() && prefix.compare(ret->m_prefix) == 0){	// found
-			if(debug > 4)cout << "found " << prefix << endl;
+			if(debug > 4) std::cout << "found " << prefix << std::endl;
 			break;
 		} else {
 			ret = ret->m_next;
@@ -248,17 +249,17 @@ NameTree::lookup(string prefix){
 
 // Need to figure out the return values
 int
-NameTree::deletePrefix(string prefix){
+NameTree::deletePrefix(std::string prefix){
 // delete a NPE based on a prefix
 
 	std::vector<std::string> strs;
 	std::vector<std::string> strsReverse;
 	boost::split(strs, prefix, boost::is_any_of("/"));
 
-	string endMark = "/";
+	std::string endMark = "/";
 	int end = boost::algorithm::ends_with(prefix, endMark);
 
-	string temp = "";
+	std::string temp = "";
 	strsReverse.clear();
 	for(size_t i = 0; i < strs.size()-end; i++){
 		temp += strs[i]; 
@@ -301,27 +302,27 @@ NameTree::dump()
 		NamePrefixEntry * temp = m_buckets[i].m_npeHead;
 		while(temp != NULL){
 
-			cout << "Bucket" << i << "\t" << temp->m_prefix << endl;
+			std::cout << "Bucket" << i << "\t" << temp->m_prefix << std::endl;
 
-			cout << "\t\tHash " << temp->m_hash << endl;
+			std::cout << "\t\tHash " << temp->m_hash << std::endl;
 
 			if(temp->m_parent != NULL){
-				cout << "\t\tparent->" << temp->m_parent->m_prefix;
+				std::cout << "\t\tparent->" << temp->m_parent->m_prefix;
 			} else {
-				cout << "\t\tROOT";
+				std::cout << "\t\tROOT";
 			}
-			cout << endl;
+			std::cout << std::endl;
 
 			if(temp->m_children != 0){
-				cout << "\t\tchildren = " << temp->m_children << endl;
+				std::cout << "\t\tchildren = " << temp->m_children << std::endl;
 			}
 
 			temp = temp->m_next;
 		}
 	}
 
-	cout << "Bucket count = " << m_nBuckets << endl;
-	cout << "Stored item = " << m_n << endl;
+	std::cout << "Bucket count = " << m_nBuckets << std::endl;
+	std::cout << "Stored item = " << m_n << std::endl;
 }
 
 int main(){
@@ -332,8 +333,8 @@ int main(){
 
 	NameTree * nt = new NameTree(nameTreeSize);
 
-	cout << "-----------------------------------------------------\n";
-	cout << "Testing /, /a, /a/b, /a/b/c, /a/b/d, /a/b/d/e, /a/b/d/f, /a/b/d/g \n" << endl;
+	std::cout << "-----------------------------------------------------\n";
+	std::cout << "Testing /, /a, /a/b, /a/b/c, /a/b/d, /a/b/d/e, /a/b/d/f, /a/b/d/g \n" << std::endl;
 
 	nt->seek("/a/b/c");
 	nt->seek("/a/b/d");
@@ -343,8 +344,8 @@ int main(){
 
 	nt->dump();
 
-	cout << "-----------------------------------------------------\n";
-	cout << "Testing, delete /a, /a/b/c" << endl;
+	std::cout << "-----------------------------------------------------\n";
+	std::cout << "Testing, delete /a, /a/b/c" << std::endl;
 
 	nt->deletePrefix("/a");
 	nt->deletePrefix("/a/b/c");
@@ -354,4 +355,5 @@ int main(){
 	return 0;
 }
 
+// } // namespace nfd
 

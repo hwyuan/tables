@@ -4,6 +4,7 @@
  * See COPYING for copyright and distribution information.
  */
 
+
 /*
 
  TODO:
@@ -18,14 +19,14 @@
 #include <iostream>
 #include <string>
 
-using namespace std;
+// namespace nfd{
 
 class FIBEntry
 {
 public:
 	FIBEntry();
 	~FIBEntry();
-	string m_name;
+	std::string m_name;
 private:
 };
 
@@ -34,17 +35,17 @@ class PITEntry
 public:
 	PITEntry();
 	~PITEntry();
-	string m_name;
+	std::string m_name;
 private:
 };
 
 class NamePrefixEntry	// NameTreeEntry
 {
 public:
-	NamePrefixEntry(const string prefix);
+	NamePrefixEntry(const std::string prefix);
 	~NamePrefixEntry();
 
-	const string
+	const std::string
 	getPrefix();
 
 	int 
@@ -71,7 +72,7 @@ public:
 	NamePrefixEntry *
 	getParent();
 
-	string m_prefix;
+	std::string m_prefix;
 	uint32_t m_hash;
 	uint32_t m_children;				// It is safe to delete an entry only if its children == 0
 	NamePrefixEntry * m_parent;			// Pointing to the parent entry.
@@ -84,7 +85,9 @@ private:
 
 };
 
- #endif // NFD_TABLE_NAMETREE_ENTRY_HPP
+// } // namespace nfd
+
+#endif // NFD_TABLE_NAMETREE_ENTRY_HPP
 
 
 
