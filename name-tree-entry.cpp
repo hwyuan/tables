@@ -15,10 +15,10 @@ TODO:
 
 */
 
-
-#include "name-tree-entry.hpp"
 #include <algorithm>
 #include <iostream>
+#include "name-tree-entry.hpp"
+
 
 namespace nfd{
 
@@ -38,11 +38,11 @@ PITEntry::~PITEntry()
 {
 }
 
-NamePrefixEntry::NamePrefixEntry(const std::string prefix)
+NamePrefixEntry::NamePrefixEntry(const ndn::Name name)
 {
-	m_hash = 0;
+	m_hash = 0; // XXX Double check to make sure let default = 0 is fine
 	m_children = 0;
-	m_prefix = prefix;
+	m_prefix = name;
 	m_parent = NULL;
 	m_childrenList.clear();
 	m_pre = NULL;

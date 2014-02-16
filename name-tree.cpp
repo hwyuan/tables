@@ -7,16 +7,15 @@
 // Name Prefix Hash Table
 
 /*
-
-TODO:
-
+TODO List
 DONE 			0. add namespace nfd 
-In progress 	1. convert to use TLV Name instead of strings
+DONE 			1. convert to use TLV Name instead of strings
 In progress 	2. unit testing
-TODO			3. use hash table from boost library
-DONE 			4. add LPM function by calling the lookup() function
-DONE 			5. add children pointers and full / partial enumeration function
-
+In progress 	3. follow the new coding style
+TODO			4. may consier using some hash function from a library
+DONE 			5. add LPM function by calling the lookup() function
+DONE 			6. add full / partial enumeration function
+TODO			7. hash table from boost
 */
 
 #include <algorithm>
@@ -35,15 +34,19 @@ namespace nfd{
 
 int debug = 0;
 
+typedef ndn::Name Name;
+
 NameTreeNode::NameTreeNode()
 {
 	m_npeHead = NULL;
 }
 
+
 NameTreeNode::~NameTreeNode()
 {
 	// Currently handled by explicitly by the destory function
 }
+
 
 void
 NameTreeNode::destory()
@@ -72,41 +75,46 @@ NameTree::~NameTree()
 	{
 		m_buckets[i].destory();
 	}
-
 	delete [] m_buckets;
 }
 
+
 // XXX FIXME: insert functino should be private, as it does not handle parent pointers
 int
-NameTree::insert(std::string prefix, NamePrefixEntry ** ret_npe)
+NameTree::insert(ndn::Name prefix, NamePrefixEntry ** ret_npe)
 {
-	uint32_t hashValue = CityHash32(prefix.c_str(), prefix.length());
+	std::string uri = prefix.toUri();
+	uint32_t hashValue = CityHash32(uri.c_str(), uri.length());
 	uint32_t loc = hashValue % m_nBuckets;
 
-	if(debug) std::cout << "string " << prefix << " hash value = " << hashValue << "  loc = " << loc << std::endl;
+	if(debug > 4) std::cout << "uri " << uri << " hash value = " << hashValue << "  loc = " << loc << std::endl;
 
 	// First see if this string is already stored
 	NamePrefixEntry * temp = m_buckets[loc].m_npeHead;
 	NamePrefixEntry * temp_pre = m_buckets[loc].m_npeHead;
 
-	while(temp != NULL){
-		if(prefix.compare(temp->m_prefix) == 0){ // The same prefix has been inserted to the NPHT before
+	while(temp != NULL)
+	{
+		if(prefix.equals(temp->m_prefix) == 1) // The same name prefix has been inserted
+		{
 			*ret_npe = temp;
 			return HT_OLD_ENTRY;
-		} else { // Not the same, keep searching
+		} else { // Not the same, keep searching XXX FIXME: need to change to isolate NT node and NT entry
 			temp_pre = temp;
 			temp = temp->m_next;
 		}
 	}
 
-	// if(debug) cout << "Did not find this entry, need to insert it to the table" << endl;
-	// If not exist, insert this entry
-	NamePrefixEntry * npe = new NamePrefixEntry(prefix);
+	if(debug > 4) std::cout << "Did not find this entry, need to insert it to the table\n";
+	// If name prefix does not exist, insert this entry.
+
+	NamePrefixEntry * npe = new  NamePrefixEntry(prefix);
 	npe->setHash(hashValue);
 	npe->m_next = NULL;
 	npe->m_pre = temp_pre;
-	
-	if(temp_pre == NULL){
+
+	if(temp_pre == NULL)
+	{
 		m_buckets[loc].m_npeHead = npe;
 	} else {
 		temp_pre->m_next = npe;
@@ -177,25 +185,16 @@ NameTree::resize(int newNBuckets)
 }
 
 
-// Name Prefix Seek
-// Build the NPHT with parent pointers
-// Lookup each name prefix, if the name prefix does not exit, then create the node.
+// Name Prefix Seek. Create NPE if not found.
 int 
-NameTree::seek(std::string prefix)
+NameTree::seek(ndn::Name prefix)
 {
-	std::vector<std::string> strs;
-	boost::split(strs, prefix, boost::is_any_of("/"));
-
 	NamePrefixEntry * npe = NULL;
 	NamePrefixEntry * parent = NULL;
 
-	std::string endMark = "/";
-	int end = boost::algorithm::ends_with(prefix, endMark);
+	for(size_t i = 0; i <= prefix.size(); i++){
 
-	std::string temp = "";
-	for(size_t i = 0; i < strs.size()-end; i++){
-		temp += strs[i]; 
-		temp += "/";
+		Name temp = prefix.getPrefix(i);
 
 		int res = insert(temp, &npe); // insert() will create the entry if it does not exist.
 		npe->m_parent = parent;
@@ -223,17 +222,18 @@ NameTree::seek(std::string prefix)
 // Return the address of the node that contains this prefix; 
 // Return NULL if not found
 NamePrefixEntry* 
-NameTree::lookup(std::string prefix)
+NameTree::lookup(ndn::Name prefix)
 {
-	uint32_t hashValue = CityHash32(prefix.c_str(), prefix.length());
+	std::string uri = prefix.toUri();
+	uint32_t hashValue = CityHash32(uri.c_str(), uri.length());
 	uint32_t loc = hashValue % m_nBuckets;
 
-	if(debug > 4) std::cout << "string " << prefix << " hash value = " << hashValue << "  loc = " << loc << std::endl;
+	if(debug > 4) std::cout << "uri " << uri << " hash value = " << hashValue << "  loc = " << loc << std::endl;
 
 	NamePrefixEntry * ret = m_buckets[loc].m_npeHead;
 	while(ret != NULL){
-		if(hashValue == ret->getHash() && prefix.compare(ret->m_prefix) == 0){	// found
-			if(debug > 4) std::cout << "found " << prefix << std::endl;
+		if(hashValue == ret->getHash() && prefix.equals(ret->m_prefix) == 1){	// found
+			if(debug > 4) std::cout << "found " << uri << std::endl;
 			break;
 		} else {
 			ret = ret->m_next;
@@ -243,78 +243,38 @@ NameTree::lookup(std::string prefix)
 	return ret;
 }
 
-// Return the longest matching prefix
-// XXX FIXME: return the lpm with a FIB entry? or return the lpm with a PIT entry?
+// Return the longest matching NPE address
+// start from the full name, and then remove 1 name comp each time
 NamePrefixEntry *
-NameTree::lpm(std::string prefix){
+NameTree::lpm(ndn::Name prefix){
 
 	NamePrefixEntry * ret = NULL;
-	// start from the full name, and then remove 1 name comp each time
-	
-	// XXX FIXME: below is used to parse the name prefix, so that NPHT begines
-	// the query from the longest name prefix.
-	std::vector<std::string> strs;
-	std::vector<std::string> strsReverse;
-	boost::split(strs, prefix, boost::is_any_of("/"));
 
-	std::string endMark = "/";
-	int end = boost::algorithm::ends_with(prefix, endMark);
+	for(int i = prefix.size(); i >= 0; i--){
 
-	std::string temp = "";
-	strsReverse.clear();
-	for(size_t i = 0; i < strs.size()-end; i++){
-		temp += strs[i]; 
-		temp += "/";
-		strsReverse.push_back(temp);
-	}
-
-	int strsReverseSize = strsReverse.size();
-	for(int i = strsReverseSize - 1; i >= 0; i--){
-
-		temp = strsReverse[i];
-		NamePrefixEntry * npe = lookup(temp);
+		NamePrefixEntry * npe = lookup(prefix.getPrefix(i));
 		if(npe != NULL){
 			ret = npe;
 			break;
 		}
 	}
-
 	return ret;
 }
 
 
-// XXX FIXME: figure out the return values
+// delete a NPE based on a prefix
+// XXX return value = ?
 int
-NameTree::deletePrefix(std::string prefix)
+NameTree::deletePrefix(ndn::Name prefix)
 {
-	// delete a NPE based on a prefix
-
-	std::vector<std::string> strs;
-	std::vector<std::string> strsReverse;
-	boost::split(strs, prefix, boost::is_any_of("/"));
-
-	std::string endMark = "/";
-	int end = boost::algorithm::ends_with(prefix, endMark);
-
-	std::string temp = "";
-	strsReverse.clear();
-	for(size_t i = 0; i < strs.size()-end; i++){
-		temp += strs[i]; 
-		temp += "/";
-		strsReverse.push_back(temp);
-	}
-
-	int strsReverseSize = strsReverse.size();
-
-	for(int i = strsReverseSize - 1; i >= 0; i--){
-
-		temp = strsReverse[i];
-
+	for(int i = prefix.size(); i >= 0; i--)
+	{
+		Name temp = prefix.getPrefix(i);
 		NamePrefixEntry * npe = lookup(temp);
 
 		if(npe == NULL) return 0;
 
-		// if this entry can be deleted (only if it has no children and no fib and no pit)
+		// if this entry can be deleted (only if it has no child and no fib and no pit)
 		if(npe->m_children == 0 && npe->m_fib == NULL && npe->m_pitHead.size() == 0){
 			// then this entry can be deleted and its parent reduces one child
 			if(npe->m_parent)
@@ -344,6 +304,7 @@ NameTree::deletePrefix(std::string prefix)
 			} else {
 				m_buckets[npe->m_hash % m_nBuckets].m_npeHead = npe->m_next;
 			}
+
 			delete npe;
 			m_n--;
 		}
@@ -354,11 +315,12 @@ NameTree::deletePrefix(std::string prefix)
 
 
 void
-NameTree::fullEnumerate(){
+NameTree::fullEnumerate()
+{
 	for(int i = 0; i < m_nBuckets; i++){
 		NamePrefixEntry * temp = m_buckets[i].m_npeHead;
 		while(temp != NULL){
-			std::cout << "Bucket" << i << "\t" << temp->m_prefix << std::endl;
+			std::cout << "Bucket" << i << "\t" << temp->m_prefix.toUri() << std::endl;
 			temp = temp->m_next;
 		}
 	}
@@ -366,11 +328,10 @@ NameTree::fullEnumerate(){
 
 
 void
-NameTree::partialEnumerate(std::string prefix){
-
+NameTree::partialEnumerate(ndn::Name prefix)
+{
 	// find the hash bucket corresponding to that prefix
 	// then enumerate all of its children...
-
 	NamePrefixEntry * npe = lookup(prefix);
 
 	if(npe == NULL){
@@ -380,12 +341,13 @@ NameTree::partialEnumerate(std::string prefix){
 	} else {
 		// go through its children list 
 		for(size_t i = 0; i < npe->m_childrenList.size(); i++){
-			std::cout << npe->m_childrenList[i]->m_prefix << std::endl;
+			std::cout << npe->m_childrenList[i]->m_prefix.toUri() << std::endl;
 		}
 	}
 }
 
 
+// For debugging
 void 
 NameTree::dump()
 {
@@ -395,12 +357,12 @@ NameTree::dump()
 		NamePrefixEntry * temp = m_buckets[i].m_npeHead;
 		while(temp != NULL){
 
-			std::cout << "Bucket" << i << "\t" << temp->m_prefix << std::endl;
+			std::cout << "Bucket" << i << "\t" << temp->m_prefix.toUri() << std::endl;
 
 			std::cout << "\t\tHash " << temp->m_hash << std::endl;
 
 			if(temp->m_parent != NULL){
-				std::cout << "\t\tparent->" << temp->m_parent->m_prefix;
+				std::cout << "\t\tparent->" << temp->m_parent->m_prefix.toUri();
 			} else {
 				std::cout << "\t\tROOT";
 			}
@@ -420,8 +382,9 @@ NameTree::dump()
 
 } // namespace nfd
 
+
 // XXX TODO: Convert the main() function to the unit tests
-int test()
+int main()
 {
 
 	using namespace std;
@@ -433,19 +396,25 @@ int test()
 
 	NameTree * nt = new NameTree(nameTreeSize);
 
-	nt->seek("/a/b/c");
+	Name aName("/a/b/c");
+	Name aName1("/a");
+	Name aName2("/a/b");
+	nt->seek(aName);
+	
 	NamePrefixEntry * npe = NULL;
 
-	npe = nt->lookup("/a/");
-	if(npe) cout << "/a/ exist = " << npe->m_prefix << endl;
+	npe = nt->lookup(aName1);
+	if(npe) cout << "/a/ exist = " << npe->m_prefix.toUri() << endl;
 
-	npe = nt->lookup("/a/b/");
-	if(npe) cout << "/a/b/ exist = " << npe->m_prefix << endl;
+	npe = nt->lookup(aName2);
+	if(npe) cout << "/a/b/ exist = " << npe->m_prefix.toUri() << endl;
 
-	npe = nt->lookup("/a/b/c/");
-	if(npe) cout << "/a/b/c/ exist = " << npe->m_prefix << endl;
+	npe = nt->lookup(aName);
+	if(npe) cout << "/a/b/c/ exist = " << npe->m_prefix.toUri() << endl;
 
-	npe = nt->lookup("/a/b/c/d/e/f/g/");
+	Name bName("/a/b/c/d/e/f/g/");
+
+	npe = nt->lookup(bName);
 	if(npe){
 		cout << "Error...lookup /a/b/c/d/ \n";
 		exit(1);
@@ -453,23 +422,25 @@ int test()
 		cout << "succeeded, did not find /a/b/c/d/e/f/g/" << endl;
 	}
 
-	npe = nt->lpm("/a/b/c/d/e/f/g/");
-	if(npe) cout << "/a/b/c/d/e/f/g/'s LPM prefix is " << npe->m_prefix << endl;
+	npe = nt->lpm(bName);
+	if(npe) cout << "/a/b/c/d/e/f/g/'s LPM prefix is " << npe->m_prefix.toUri() << endl;
 
-	nt->seek("/a/b/c/d/");
-	npe = nt->lpm("/a/b/c/d/e/f/g/");
+	Name abcd("/a/b/c/d");
+	nt->seek(abcd);
+	npe = nt->lpm(bName);
 	cout << "after inserint /a/b/c/d/" << endl;;
-	if(npe) cout << "/a/b/c/d/e/f/g/'s LPM prefix is " << npe->m_prefix << endl;
+	if(npe) cout << "/a/b/c/d/e/f/g/'s LPM prefix is " << npe->m_prefix.toUri() << endl;
 
 	cout << "Now insert /a/b/c/d/e/f/g/ via insert(), not seek()" << endl;
-	nt->insert("/a/b/c/d/e/f/g/", &npe);
+	nt->insert(bName, &npe);
 
 	cout << "Perform lookup on /a/b/c/d/e/f/g/" << endl;
-	npe = nt->lookup("/a/b/c/d/e/f/g/");
-	if(npe && npe->m_prefix.compare("/a/b/c/d/e/f/g/") == 0)cout << "insert() passed part 1/2" << endl;
+	npe = nt->lookup(bName);
+	if(npe && npe->m_prefix.equals(bName) == 1)cout << "insert() passed part 1/2" << endl;
 
+	Name bName1("/a/b/c/d/e/f/");
 	cout << "Perform lookup on /a/b/c/d/e/f/, should return NULL" << endl;
-	npe = nt->lookup("/a/b/c/d/e/f/");
+	npe = nt->lookup(bName1);
 	if(npe){
 		cout << "Error lookup() at line " << __LINE__ << endl;
 		exit(1);
@@ -487,29 +458,44 @@ int test()
 	cout << "partial enumerateion\n";
 	cout << "--------------------------\n";
 	
-	nt->seek("/a/b/c/1/");
-	nt->seek("/a/b/c/2/");
-	nt->seek("/a/b/c/3/");
-	nt->seek("/a/b/c/4/");
-	nt->seek("/a/b/d/1/");
-	nt->seek("/a/b/e/1/");
-	nt->seek("/a/b/f/1/");
-	nt->seek("/a/b/g/1/");
+	Name cName1("/a/b/c/1/");
+	Name cName2("/a/b/c/2/");
+	Name cName3("/a/b/c/3/");
+	Name cName4("/a/b/c/4/");
+	Name cName5("/a/b/d/1/");
+	Name cName6("/a/b/e/1/");
+	Name cName7("/a/b/f/1/");
+	Name cName8("/a/b/g/1/");
+	Name cName9("/a/c/g/1/");
+
+	nt->seek(cName1);
+	nt->seek(cName2);
+	nt->seek(cName3);
+	nt->seek(cName4);
+	nt->seek(cName5);
+	nt->seek(cName6);
+	nt->seek(cName7);
+	nt->seek(cName8);
+	nt->seek(cName9);
 
 	cout << "/a/:children" << endl;
-	nt->partialEnumerate("/a/");
+	Name dName1("a");
+	nt->partialEnumerate(dName1);
 	cout << "--------------------------\n";
 
 	cout << "/a/b/ children:" << endl;
-	nt->partialEnumerate("/a/b/");
+	Name dName2("a/b");
+	nt->partialEnumerate(dName2);
 	cout << "--------------------------\n";
 
 	cout << "/a/b/c/ children:" << endl;
-	nt->partialEnumerate("/a/b/c/");
+	Name dName3("a/b/c");
+	nt->partialEnumerate(dName3);
 	cout << "--------------------------\n";
 
 	cout << "/does_not_exist/: children:" << endl;
-	nt->partialEnumerate("/does_not_exist/");
+	Name dName4("/does_not_exist");
+	nt->partialEnumerate(dName4);
 	cout << "--------------------------\n";
 
 	return 0;

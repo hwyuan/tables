@@ -21,6 +21,9 @@
 #include <vector>
 #include <stdint.h>
 
+#include <ndn-cpp-dev/common.hpp>
+#include <ndn-cpp-dev/name.hpp>
+
 namespace nfd{
 
 class FIBEntry
@@ -45,7 +48,7 @@ private:
 class NamePrefixEntry	// NamePrefixEntry
 {
 public:
-	NamePrefixEntry(const std::string prefix);
+	NamePrefixEntry(const ndn::Name prefix);
 	~NamePrefixEntry();
 
 	const std::string
@@ -81,7 +84,7 @@ public:
 	NamePrefixEntry *
 	getParent();
 
-	std::string m_prefix;
+	ndn::Name m_prefix;
 	uint32_t m_hash;
 	uint32_t m_children;				// It is safe to delete an entry only if its children == 0
 	NamePrefixEntry * m_parent;			// Pointing to the parent entry.
