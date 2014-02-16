@@ -10,12 +10,10 @@
 TODO List
 DONE 			0. add namespace nfd 
 DONE 			1. convert to use TLV Name instead of strings
-In progress 	2. unit testing
-In progress 	3. follow the new coding style
-TODO			4. may consier using some hash function from a library
-DONE 			5. add LPM function by calling the lookup() function
-DONE 			6. add full / partial enumeration function
-TODO			7. hash table from boost
+In progress 	2. unit test
+TODO			3. may consier using some hash function from a library
+DONE 			4. add LPM function by calling the lookup() function
+DONE 			5. add full / partial enumeration function
 */
 
 #include <algorithm>
