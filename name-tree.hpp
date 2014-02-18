@@ -59,20 +59,30 @@ public:
 	// NameTree Delete
 	int
 	deletePrefix(ndn::Name prefix);
+<<<<<<< HEAD
 
+=======
+>>>>>>> 611673fddca5dc3a8c7feab06218e15e51c69845
 
 	// NameTree Lookup
 	NamePrefixEntry * 
 	lookup(ndn::Name prefix);
+<<<<<<< HEAD
 
 
 	// NameTree Lookup
 	NamePrefixEntry * 
 	lookup(ndn::Name prefix, NameTreeNode ** retNode, NameTreeNode ** retNodePre);
+=======
+>>>>>>> 611673fddca5dc3a8c7feab06218e15e51c69845
 
 	// NameTree Longest Prefix Lookup
 	NamePrefixEntry *
 	lpm(ndn::Name prefix);
+<<<<<<< HEAD
+=======
+
+>>>>>>> 611673fddca5dc3a8c7feab06218e15e51c69845
 
 	// Hash Table Resize
 	void
@@ -112,17 +122,28 @@ public:
 	void 
 	dump();
 
+	// NameTree Insert
+	int
+	insert(ndn::Name prefix, NamePrefixEntry ** ret_npe);
+
 private:
 	int m_n;	// Number of items being stored
 	int m_nBuckets; // Number of hash buckets
+<<<<<<< HEAD
 	NameTreeNode ** m_buckets; // Name Tree Buckets in the NPHT
 
 	// NameTree Insert
 	int
 	insert(ndn::Name prefix, NamePrefixEntry ** ret_npe);
+=======
+	NameTreeNode * m_buckets; // Name Tree Buckets in the NPHT
+
+
+>>>>>>> 611673fddca5dc3a8c7feab06218e15e51c69845
  };
 
 } // namespace nfd
+
 
 #endif // NFD_TABLE_NAME_TREE_HPP
 

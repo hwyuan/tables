@@ -84,6 +84,10 @@ public:
 	NamePrefixEntry *
 	getParent();
 
+<<<<<<< HEAD
+=======
+	ndn::Name m_prefix;
+>>>>>>> 611673fddca5dc3a8c7feab06218e15e51c69845
 	uint32_t m_hash;
 	ndn::Name m_prefix;
 	uint32_t m_children;				// It is safe to delete an entry only if its children == 0
