@@ -10,6 +10,7 @@
 TODO:
 1. add namespace nfd
 2. currenlty, all the class members are in public, some of them should be moved to private 
+3. Remove the m_pre pointer in the NameTreeNode class
 
 */
 
@@ -18,6 +19,8 @@ TODO:
 #define NFD_TABLE_NAME_TREE_HPP
 
 #include <iostream>
+#include <ndn-cpp-dev/common.hpp>
+
 #include "name-tree-entry.hpp"
 
 namespace nfd{
@@ -35,8 +38,9 @@ public:
 	void 
 	destory();
 
-	NamePrefixEntry * m_npeHead; // Name Prefix Entry Head
-
+	NamePrefixEntry * m_npe; // Name Prefix Entry Head
+	NameTreeNode * m_next; // Next Name Tree Node (to resovle hash collision)
+	
 private:
 
 };
@@ -52,22 +56,23 @@ public:
 	int 
 	initNameTree(int size);
 
-	// NameTree Insert
-	int
-	insert(std::string prefix, NamePrefixEntry ** ret_npe);
-
 	// NameTree Delete
 	int
-	deletePrefix(std::string prefix);
+	deletePrefix(ndn::Name prefix);
+
 
 	// NameTree Lookup
 	NamePrefixEntry * 
-	lookup(std::string prefix);
+	lookup(ndn::Name prefix);
+
+
+	// NameTree Lookup
+	NamePrefixEntry * 
+	lookup(ndn::Name prefix, NameTreeNode ** retNode, NameTreeNode ** retNodePre);
 
 	// NameTree Longest Prefix Lookup
 	NamePrefixEntry *
-	lpm(std::string prefix);
-
+	lpm(ndn::Name prefix);
 
 	// Hash Table Resize
 	void
@@ -76,11 +81,11 @@ public:
 
 	// NameTree Seek
 	int
-	seek(std::string prefix);
+	seek(ndn::Name prefix);
 
 	// NameTree Seek, insert all the proper prefixes and build the parent pointers.
 	int
-	nameTreeSeek(std::string prefix);
+	nameTreeSeek(ndn::Name prefix);
 
 	// Resize the hash table
 	int
@@ -94,18 +99,13 @@ public:
 	int
 	getNBuckets();
 
-	// Get Bucket content (XXX may not be kept all the time)
-	int
-	getBucketContent(int index);
-
 	// Enumerate all the non-empty NPHT entries
 	void
 	fullEnumerate();
 
 	// Enumerate all the children of a specified prefix
 	void
-	partialEnumerate(std::string prefix);
-
+	partialEnumerate(ndn::Name prefix);
 
 
 	// Dump the Name Tree for debugging
@@ -115,7 +115,11 @@ public:
 private:
 	int m_n;	// Number of items being stored
 	int m_nBuckets; // Number of hash buckets
-	NameTreeNode * m_buckets; // Name Tree Buckets in the NPHT
+	NameTreeNode ** m_buckets; // Name Tree Buckets in the NPHT
+
+	// NameTree Insert
+	int
+	insert(ndn::Name prefix, NamePrefixEntry ** ret_npe);
  };
 
 } // namespace nfd
