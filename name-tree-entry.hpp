@@ -26,6 +26,11 @@
 
 namespace nfd{
 
+class FIBEntry;
+class PITEntry;
+class NameTreeNode;
+class NamePrefixEntry;
+
 class FIBEntry
 {
 public:
@@ -44,6 +49,24 @@ public:
 private:
 };
 
+/* similar to CCNx's hashtb node */
+class NameTreeNode
+{
+public:
+	NameTreeNode();
+	~NameTreeNode();
+
+	void 
+	destory();
+
+	NamePrefixEntry * m_npe; // Name Prefix Entry Head
+	NameTreeNode * m_pre; // Next Name Tree Node (to resovle hash collision)
+	NameTreeNode * m_next; // Next Name Tree Node (to resovle hash collision)
+	
+private:
+
+};
+
 
 class NamePrefixEntry	// NamePrefixEntry
 {
@@ -56,6 +79,9 @@ public:
 
 	int 
 	setFIBEntry(FIBEntry * fib);
+
+	int 
+	deleteFIBEntry(FIBEntry * fib);
 
 	int 
 	addPITEntry(PITEntry * pit);
@@ -84,16 +110,22 @@ public:
 	NamePrefixEntry *
 	getParent();
 
+	void
+	setNode(NameTreeNode* node);
+
+	NameTreeNode*
+	getNode();
+
 	uint32_t m_hash;
 	ndn::Name m_prefix;
 	uint32_t m_children;				// It is safe to delete an entry only if its children == 0
 	NamePrefixEntry * m_parent;			// Pointing to the parent entry.
 	std::vector<NamePrefixEntry *> m_childrenList; // Children pointers.
 	FIBEntry * m_fib;
-	std::vector<PITEntry *> m_pitHead;
+	std::vector<PITEntry *> m_pitList;
 
 private:
-
+	NameTreeNode * m_node;
 };
 
 } // namespace nfd

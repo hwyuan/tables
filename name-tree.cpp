@@ -16,12 +16,11 @@ TODO			4. may consier using some hash function from a library
 DONE 			5. add LPM function by calling the lookup() function
 DONE 			6. add full / partial enumeration function
 TODO			7. hash table from boost
+- Test deleteNPEIfEmpty
+
 
 ISSUES
-- Currently the hash function takes std::string as input, which requires ndn::Name to be converted to string first..
-
-NOTE
-- Currently we are using lazy deletion for Name Tree Node.
+- Currently the hash function takes std::string as input, which requires ndn::Name to be converted to string first
 
 */
 
@@ -34,36 +33,14 @@ NOTE
 #include "name-tree.hpp"
 #include "city.hpp"
 
+typedef ndn::Name Name;
+
 namespace nfd{
 
 #define HT_OLD_ENTRY 0
 #define HT_NEW_ENTRY 1
 
 int debug = 5;
-
-typedef ndn::Name Name;
-
-NameTreeNode::NameTreeNode()
-{
-	m_npe = NULL;
-	m_next = NULL;
-}
-
-
-NameTreeNode::~NameTreeNode()
-{
-	// Currently handled by explicitly by the destory function
-}
-
-
-void
-NameTreeNode::destory()
-{
-	NamePrefixEntry * tempEntry = m_npe;
-	if(tempEntry != NULL) delete tempEntry;
-
-	if(m_next) m_next->destory();
-}
 
 
 NameTree::NameTree(int nBuckets)
@@ -73,6 +50,8 @@ NameTree::NameTree(int nBuckets)
 	m_n = 0; // Number of items stored in the table
 	m_nBuckets = nBuckets;
 	m_buckets = new NameTreeNode*[m_nBuckets];
+	m_loadFactor = 0.5;
+	m_resizeFactor = 2;
 
 	/* Initialize the pointer array */
 	for(int i = 0; i < m_nBuckets; i++)
@@ -87,15 +66,16 @@ NameTree::~NameTree()
 	int i = 0;
 	for(i = 0; i < m_nBuckets; i++)
 	{
-		m_buckets[i]->destory();
+		if(m_buckets[i] != NULL) delete m_buckets[i];
 	}
 	delete [] m_buckets;
 }
 
-
-// XXX FIXME: insert functino should be private, as it does not handle parent pointers
+/*
+	/return{HT_OLD_ENTRY and HT_NEW_ENTRY}
+*/
 int
-NameTree::insert(ndn::Name prefix, NamePrefixEntry ** retNpe)
+NameTree::insert(const Name prefix, NamePrefixEntry ** retNpe)
 {
 	std::string uri = prefix.toUri();
 	uint32_t hashValue = CityHash32(uri.c_str(), uri.length());
@@ -127,6 +107,8 @@ NameTree::insert(ndn::Name prefix, NamePrefixEntry ** retNpe)
 	/* If no bucket is empty occupied, we need to create a new node, and it is linked from tempPre */
 
 	NameTreeNode * node = new NameTreeNode();
+	node->m_pre = tempPre;
+
 	if(tempPre == NULL)
 	{
 		m_buckets[loc] = node;
@@ -138,6 +120,7 @@ NameTree::insert(ndn::Name prefix, NamePrefixEntry ** retNpe)
 	NamePrefixEntry * npe = new NamePrefixEntry(prefix);
 	npe->setHash(hashValue);
 	node->m_npe = npe; // link the NPE to its Node
+	npe->setNode(node);
 
 	* retNpe = npe;
 
@@ -147,7 +130,7 @@ NameTree::insert(ndn::Name prefix, NamePrefixEntry ** retNpe)
 
 /* Name Prefix Seek. Create NPE if not found */
 int 
-NameTree::seek(ndn::Name prefix)
+NameTree::seek(const Name prefix)
 {
 	NamePrefixEntry * npe = NULL;
 	NamePrefixEntry * parent = NULL;
@@ -170,8 +153,8 @@ NameTree::seek(ndn::Name prefix)
 
 		// Threshold for resizing the hash table (50% load, increase by twice)
 		// XXX FIXME: Resizing threshold should probably be configurable 
-		if(m_n > 0.5 * m_nBuckets){
-			resize(2 * m_nBuckets);
+		if(m_n > (int) (m_loadFactor * (double) m_nBuckets)){
+			resize(m_resizeFactor * m_nBuckets);
 		}
 
 		parent = npe;
@@ -184,7 +167,7 @@ NameTree::seek(ndn::Name prefix)
 // Return the address of the node that contains this prefix; 
 // Return NULL if not found
 NamePrefixEntry* 
-NameTree::lookup(ndn::Name prefix)
+NameTree::lookup(const Name prefix)
 {
 	std::string uri = prefix.toUri();
 	uint32_t hashValue = CityHash32(uri.c_str(), uri.length());
@@ -214,7 +197,7 @@ NameTree::lookup(ndn::Name prefix)
 // Return the address of the node that contains this prefix; 
 // Return NULL if not found
 NamePrefixEntry* 
-NameTree::lookup(ndn::Name prefix, NameTreeNode ** retNode, NameTreeNode ** retNodePre)
+NameTree::lookup(const Name prefix, NameTreeNode ** retNode, NameTreeNode ** retNodePre)
 {
 	std::string uri = prefix.toUri();
 	uint32_t hashValue = CityHash32(uri.c_str(), uri.length());
@@ -248,7 +231,7 @@ NameTree::lookup(ndn::Name prefix, NameTreeNode ** retNode, NameTreeNode ** retN
 // Return the longest matching NPE address
 // start from the full name, and then remove 1 name comp each time
 NamePrefixEntry *
-NameTree::lpm(ndn::Name prefix){
+NameTree::lpm(const Name prefix){
 
 	NamePrefixEntry * npe = NULL;
 
@@ -261,12 +244,11 @@ NameTree::lpm(ndn::Name prefix){
 	return NULL;
 }
 
-
 /* delete a NPE based on a prefix */
 // Return 0: failure
 // Return 1: success
 int
-NameTree::deletePrefix(ndn::Name prefix)
+NameTree::deletePrefix(const Name prefix)
 {
 	for(int i = prefix.size(); i >= 0; i--)
 	{
@@ -278,7 +260,7 @@ NameTree::deletePrefix(ndn::Name prefix)
 		if(npe == NULL) return 0;
 
 		// if this entry can be deleted (only if it has no child and no fib and no pit)
-		if(npe->m_children == 0 && npe->m_fib == NULL && npe->m_pitHead.size() == 0){
+		if(npe->m_children == 0 && npe->m_fib == NULL && npe->m_pitList.size() == 0){
 			// then this entry can be deleted and its parent reduces one child
 			if(npe->m_parent)
 			{
@@ -316,6 +298,61 @@ NameTree::deletePrefix(ndn::Name prefix)
 }
 
 
+/*
+	/return{0: failure, 1: success}
+*/
+int
+NameTree::deleteNPEIfEmpty(NamePrefixEntry* npe)
+{
+	/* first check if this NPE can be deleted */
+	if(npe->m_children == 0 && npe->m_fib == NULL && npe->m_pitList.size() == 0){
+
+		/* update child-related info in the parent NPE */
+		NamePrefixEntry * parent = npe->m_parent;
+
+		if(parent != NULL){
+			parent->m_children--;
+
+			int check = 0;
+			size_t size = parent->m_childrenList.size();
+			for(size_t i = 0; i < size; i++)
+			{
+				if(parent->m_childrenList[i] == npe)
+				{
+					parent->m_childrenList[i] = parent->m_childrenList[size-1];
+					parent->m_childrenList.pop_back();
+					check = 1;
+					break;
+				}
+			}
+
+			assert(check == 1);
+		}
+
+		/* remove this NPE and its Name Tree Node */
+		NameTreeNode * node = npe->getNode();
+		NameTreeNode * nodePre = node->m_pre;
+
+		if(nodePre != NULL)
+		{
+			nodePre->m_next = node->m_next;
+		} else {
+			m_buckets[npe->m_hash % m_nBuckets] = node->m_next;
+		}
+		node->m_next->m_pre = nodePre;
+
+		delete npe;
+		delete node;
+		m_n--;
+
+		if(parent)
+			deleteNPEIfEmpty(parent);
+
+	} // if this npe is empty
+
+	return 1;
+}
+
 void
 NameTree::fullEnumerate()
 {
@@ -334,9 +371,8 @@ NameTree::fullEnumerate()
 }
 
 
-
 void
-NameTree::partialEnumerate(ndn::Name prefix)
+NameTree::partialEnumerate(const Name prefix)
 {
 	// find the hash bucket corresponding to that prefix
 	// then enumerate all of its children...
@@ -354,6 +390,7 @@ NameTree::partialEnumerate(ndn::Name prefix)
 	}
 }
 
+
 // Hash Table Resize
 void
 NameTree::resize(int newNBuckets)
@@ -367,6 +404,7 @@ NameTree::resize(int newNBuckets)
 
 	NameTreeNode ** pp = NULL;
 	NameTreeNode * p = NULL;
+	NameTreeNode * pre = NULL;
 	NameTreeNode * q = NULL; // record p->m_next
 	uint32_t h;
 	int i;
@@ -390,8 +428,10 @@ NameTree::resize(int newNBuckets)
 			b = h % newNBuckets;
 			for(pp = &newBuckets[b]; *pp != NULL; pp = &((*pp)->m_next))
 			{
+				pre = *pp;
 				continue;
 			}
+			p->m_pre = pre;
 			p->m_next = *pp; // Actually *pp always == NULL in this case
 			*pp = p;
 		}
@@ -409,6 +449,7 @@ NameTree::resize(int newNBuckets)
 
 	delete oldBuckets;
 }
+
 
 // For debugging
 void 
@@ -450,7 +491,6 @@ NameTree::dump()
 	std::cout << "Bucket count = " << m_nBuckets << std::endl;
 	std::cout << "Stored item = " << m_n << std::endl;
 	std::cout << "--------------------------\n";
-
 }
 
 } // namespace nfd
@@ -458,7 +498,6 @@ NameTree::dump()
 
 int main()
 {
-
 	using namespace std;
 	using namespace nfd;
 	
@@ -554,56 +593,6 @@ int main()
 	cout << "--------------------------\n";
 
 	nt = new NameTree(8);
-
-	Name a("/a");
-	Name b("/b");
-	Name c("/c");
-	Name d("/d");
-	Name e("/e");
-	Name f("/f");
-	Name g("/g");
-	Name h("/h");
-	Name i("/i");
-	Name j("/j");
-	Name k("/k");
-	Name l("/l");
-	Name m("/m");
-	Name n("/n");
-	Name o("/o");
-	Name p("/p");
-
-	nt->seek(a);
-	nt->dump();
-	nt->seek(b);
-	nt->dump();
-	nt->seek(c);
-	nt->dump();
-	nt->seek(d);
-	nt->dump();
-	nt->seek(e);
-	nt->dump();
-	nt->seek(f);
-	nt->dump();
-	nt->seek(g);
-	nt->dump();
-	nt->seek(h);
-	nt->dump();
-	nt->seek(i);
-	nt->dump();
-	nt->seek(j);
-	nt->dump();
-	nt->seek(k);
-	nt->dump();
-	nt->seek(l);
-	nt->dump();
-	nt->seek(m);
-	nt->dump();
-	nt->seek(n);
-	nt->dump();
-	nt->seek(o);
-	nt->dump();
-	nt->seek(p);
-	nt->dump();
 
 	return 0;
 }

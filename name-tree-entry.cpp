@@ -38,6 +38,31 @@ PITEntry::~PITEntry()
 {
 }
 
+
+NameTreeNode::NameTreeNode()
+{
+	m_npe = NULL;
+	m_pre = NULL;
+	m_next = NULL;
+}
+
+
+NameTreeNode::~NameTreeNode()
+{
+	// Currently handled by explicitly by the destory function
+}
+
+
+void
+NameTreeNode::destory()
+{
+	NamePrefixEntry * tempEntry = m_npe;
+	if(tempEntry != NULL) delete tempEntry;
+
+	if(m_next) m_next->destory();
+}
+
+
 NamePrefixEntry::NamePrefixEntry(const ndn::Name name)
 {
 	m_hash = 0; // XXX Double check to make sure let default = 0 is fine
@@ -46,7 +71,7 @@ NamePrefixEntry::NamePrefixEntry(const ndn::Name name)
 	m_parent = NULL;
 	m_childrenList.clear();
 	m_fib = NULL;
-	m_pitHead.clear();
+	m_pitList.clear();
 }
 
 NamePrefixEntry::~NamePrefixEntry()
@@ -60,10 +85,16 @@ NamePrefixEntry::setFIBEntry(FIBEntry * fib){
 	return 0;
 }
 
+int 
+NamePrefixEntry::deleteFIBEntry(FIBEntry * fib){
+	m_fib = NULL;
+
+	return 0;
+}
+
 int
 NamePrefixEntry::addPITEntry(PITEntry * pit){
-	m_pitHead.push_back(pit);
-
+	m_pitList.push_back(pit);
 	return 0;
 }
 
@@ -74,18 +105,20 @@ NamePrefixEntry::deletePITEntry(PITEntry * pit){
 	// XXXX FIXME: check if this NPE can be deleted
 	// basically, if there is nothing left in the NPE, this NPE needs to be deleted
 	// And deleting this NPE may results in its parents also being deleted.
-	// - Can be handled by calling the NT's deletePrefix() method
-	// - But need to decide if we are going to call this method here or in PIT
-	// - At the moment, it seems that calling the method in PIT is more reasonable
-	// - should be able to notify the PIT if the PIT entry is empty
-
-	return 0;
+	for(size_t i = 0; i < m_pitList.size(); i++){
+		if(m_pitList[i] == pit){
+			m_pitList[i] = m_pitList[m_pitList.size() - 1]; // assign last item to pos
+			m_pitList.pop_back();
+			return 1; // success
+		}
+	}
+	return 0; // failure
 }
 
 
 int
 NamePrefixEntry::getPITCount(){
-	return (int)m_pitHead.size(); // convert size_t to int
+	return (int)m_pitList.size(); // convert size_t to int
 }
 
 
@@ -113,5 +146,20 @@ NamePrefixEntry::getParent()
 	return m_parent;
 }
 
+void
+NamePrefixEntry::setNode(NameTreeNode * node)
+{
+	m_node = node;
+}
+
+NameTreeNode *
+NamePrefixEntry::getNode()
+{
+	return m_node;
+}
+
+
+
 } // namespace nfd
+
 

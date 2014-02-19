@@ -23,27 +23,13 @@ TODO:
 
 #include "name-tree-entry.hpp"
 
+typedef ndn::Name Name;
+
 namespace nfd{
 
 /** \class NameTree
  *  \brief represents the Name Prefix Hash Table
  */
-
-class NameTreeNode
-{
-public:
-	NameTreeNode();
-	~NameTreeNode();
-
-	void 
-	destory();
-
-	NamePrefixEntry * m_npe; // Name Prefix Entry Head
-	NameTreeNode * m_next; // Next Name Tree Node (to resovle hash collision)
-	
-private:
-
-};
 
 
 class NameTree
@@ -58,17 +44,15 @@ public:
 
 	// NameTree Delete
 	int
-	deletePrefix(ndn::Name prefix);
+	deletePrefix(const Name prefix);
 
-
-	// NameTree Lookup
-	NamePrefixEntry * 
-	lookup(ndn::Name prefix);
-
+	// NameTree Delete Name Prefix Entry
+	int
+	deleteNPEIfEmpty(NamePrefixEntry* npe);
 
 	// NameTree Lookup
 	NamePrefixEntry * 
-	lookup(ndn::Name prefix, NameTreeNode ** retNode, NameTreeNode ** retNodePre);
+	lookup(const Name prefix);
 
 	// NameTree Longest Prefix Lookup
 	NamePrefixEntry *
@@ -78,18 +62,9 @@ public:
 	void
 	resize(int newNBuckets);
 
-
 	// NameTree Seek
 	int
-	seek(ndn::Name prefix);
-
-	// NameTree Seek, insert all the proper prefixes and build the parent pointers.
-	int
-	nameTreeSeek(ndn::Name prefix);
-
-	// Resize the hash table
-	int
-	nameTreeResize();
+	seek(const Name prefix);
 
 	// Get current load
 	int
@@ -105,8 +80,7 @@ public:
 
 	// Enumerate all the children of a specified prefix
 	void
-	partialEnumerate(ndn::Name prefix);
-
+	partialEnumerate(const Name prefix);
 
 	// Dump the Name Tree for debugging
 	void 
@@ -116,14 +90,23 @@ private:
 	int m_n;	// Number of items being stored
 	int m_nBuckets; // Number of hash buckets
 	NameTreeNode ** m_buckets; // Name Tree Buckets in the NPHT
+	double m_loadFactor;
+	int m_resizeFactor;
 
 	// NameTree Insert
 	int
 	insert(ndn::Name prefix, NamePrefixEntry ** ret_npe);
+
+	// NameTree Lookup
+	NamePrefixEntry * 
+	lookup(const Name prefix, NameTreeNode ** retNode, NameTreeNode ** retNodePre);
+
  };
 
 } // namespace nfd
 
 #endif // NFD_TABLE_NAME_TREE_HPP
+
+
 
 
