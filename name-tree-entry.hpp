@@ -4,14 +4,7 @@
  * See COPYING for copyright and distribution information.
  */
 
-
-/*
-
- TODO:
-1. add namespace nfd
-2. currenlty, all the class members are in public, some of them should be moved to private 
-
-*/
+// Name Tree Entry (i.e., Name Prefix Entry)
 
 #ifndef NFD_TABLE_NAME_TREE_ENTRY_HPP
 #define NFD_TABLE_NAME_TREE_ENTRY_HPP
@@ -20,119 +13,173 @@
 #include <string>
 #include <vector>
 #include <stdint.h>
+#include "common.hpp"
+#include "table/fib-entry.hpp"
+#include "table/pit-entry.hpp"
+#include "table/measurements-entry.hpp"
 
-#include <ndn-cpp-dev/common.hpp>
-#include <ndn-cpp-dev/name.hpp>
 
 namespace nfd{
+namespace nt{
 
-class FIBEntry;
-class PITEntry;
-class NameTreeNode;
-class NamePrefixEntry;
+class Node;
+class Entry;
 
-class FIBEntry
+typedef fib::Entry FibEntry;
+typedef pit::Entry PitEntry;
+typedef measurements::Entry MeasurementsEntry;
+// Name Tree node (similar to CCNx's hashtb node)
+class Node
 {
 public:
-	FIBEntry();
-	~FIBEntry();
-	std::string m_name;
+  Node();
+
+  ~Node();
+  
+  // variables are in public as this is just a data structure
+  Entry* m_npe; // Name Prefix Entry Head
+  Node* m_pre; // Next Name Tree Node (to resovle hash collision)
+  Node* m_next; // Next Name Tree Node (to resovle hash collision)
 private:
 };
 
-class PITEntry
+// Name Prefix Entry
+class Entry
 {
 public:
-	PITEntry();
-	~PITEntry();
-	std::string m_name;
+
+  Entry(const Name& prefix);
+
+  ~Entry();
+
+  const Name&
+  getPrefix();
+
+  void
+  setHash(uint32_t hash);
+
+  const uint32_t
+  getHash();
+
+  void
+  setParent(Entry * parent);
+
+  Entry *
+  getParent();
+
+  const int 
+  getChildren();
+
+  const int
+  getChildrenListSize();
+
+  std::vector<nt::Entry *>&
+  getChildrenList();
+
+  bool 
+  setFibEntry(FibEntry * fib);
+
+  FibEntry* 
+  getFibEntry();
+
+  bool
+  deleteFibEntry(FibEntry * fib);
+
+  bool 
+  insertPitEntry(PitEntry * pit);
+
+  std::vector<PitEntry *>&
+  getPITList();
+  
+  bool 
+  deletePitEntry(PitEntry * pit);
+
+  bool
+  setMeasurementsEntry(MeasurementsEntry* measurements);
+
+  MeasurementsEntry*
+  getMeasurementsEntry();
+
+  void
+  setNode(Node* node);
+
+  Node*
+  getNode();
+
+  uint32_t m_hash;
+  Name m_prefix;
+  Entry * m_parent;     // Pointing to the parent entry.
+  uint32_t m_children;        // It is safe to delete an entry only if its children == 0
+  std::vector<Entry *> m_childrenList; // Children pointers.
+  FibEntry* m_fib;
+  std::vector<PitEntry *> m_pitList;
+  MeasurementsEntry* m_measurements;
+
 private:
+  Node* m_node;
 };
 
-/* similar to CCNx's hashtb node */
-class NameTreeNode
+inline const Name&
+Entry::getPrefix()
 {
-public:
-	NameTreeNode();
-	~NameTreeNode();
+  return m_prefix;
+}
 
-	void 
-	destory();
-
-	NamePrefixEntry * m_npe; // Name Prefix Entry Head
-	NameTreeNode * m_pre; // Next Name Tree Node (to resovle hash collision)
-	NameTreeNode * m_next; // Next Name Tree Node (to resovle hash collision)
-	
-private:
-
-};
-
-
-class NamePrefixEntry	// NamePrefixEntry
+inline const uint32_t
+Entry::getHash()
 {
-public:
-	NamePrefixEntry(const ndn::Name prefix);
-	~NamePrefixEntry();
+  return m_hash;
+}
 
-	const std::string
-	getPrefix();
+inline Entry*
+Entry::getParent()
+{
+  return m_parent;
+}
 
-	int 
-	setFIBEntry(FIBEntry * fib);
+inline const int
+Entry::getChildren()
+{
+  return m_children;
+}
 
-	int 
-	deleteFIBEntry(FIBEntry * fib);
+inline const int
+Entry::getChildrenListSize()
+{
+  return (int)m_pitList.size(); // convert size_t to int
+}
 
-	int 
-	addPITEntry(PITEntry * pit);
+inline std::vector<nt::Entry *>&
+Entry::getChildrenList()
+{
+  return m_childrenList;
+}
 
-	int 
-	deletePITEntry(PITEntry * pit);
+inline FibEntry*
+Entry::getFibEntry()
+{
+  return m_fib;
+}
 
-	int
-	getPITCount();
+inline std::vector<PitEntry *>&
+Entry::getPITList()
+{
+  return m_pitList;
+}
 
-	void
-	setHash(uint32_t hash);
+inline MeasurementsEntry*
+Entry::getMeasurementsEntry()
+{
+  return m_measurements;
+}
 
-	uint32_t
-	getHash();
+inline Node*
+Entry::getNode()
+{
+  return m_node;
+}
 
-	void
-	setNext(NamePrefixEntry * next);
-
-	void
-	setParent(NamePrefixEntry * parent);
-
-	NamePrefixEntry *
-	getNext();
-
-	NamePrefixEntry *
-	getParent();
-
-	void
-	setNode(NameTreeNode* node);
-
-	NameTreeNode*
-	getNode();
-
-	uint32_t m_hash;
-	ndn::Name m_prefix;
-	uint32_t m_children;				// It is safe to delete an entry only if its children == 0
-	NamePrefixEntry * m_parent;			// Pointing to the parent entry.
-	std::vector<NamePrefixEntry *> m_childrenList; // Children pointers.
-	FIBEntry * m_fib;
-	std::vector<PITEntry *> m_pitList;
-
-private:
-	NameTreeNode * m_node;
-};
-
+} // namespace nt
 } // namespace nfd
 
 #endif // NFD_TABLE_NAME_TREE_ENTRY_HPP
-
-
-
-
-

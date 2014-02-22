@@ -6,594 +6,445 @@
 
 // Name Prefix Hash Table
 
-/*
-TODO List
-DONE 			0. add namespace nfd 
-DONE 			1. convert to use TLV Name instead of strings
-In progress 	2. unit testing
-In progress 	3. follow the new coding style
-TODO			4. may consier using some hash function from a library
-DONE 			5. add LPM function by calling the lookup() function
-DONE 			6. add full / partial enumeration function
-TODO			7. hash table from boost
-- Test deleteNPEIfEmpty
-
-
-ISSUES
-- Currently the hash function takes std::string as input, which requires ndn::Name to be converted to string first
-
-*/
-
 #include <algorithm>
 #include <iostream>
 #include <sstream>
-
 #include <boost/algorithm/string.hpp>
-
 #include "name-tree.hpp"
-#include "city.hpp"
 
-typedef ndn::Name Name;
+/*
+
+- KNOWN ISSUES -
+Smart pointers have been used in NFD (fib.cpp and pit.cpp, while currently in Name-Tree, we
+store native pointers. We need to double check to make sure this would
+not create any problems.
+
+*/
 
 namespace nfd{
+namespace nt{
 
 #define HT_OLD_ENTRY 0
 #define HT_NEW_ENTRY 1
 
-int debug = 5;
-
+int debug = 0;
 
 NameTree::NameTree(int nBuckets)
-{	
-	if(debug > 4) std::cout << "Name::Tree()" << std::endl;
+{ 
+  if (debug > 4) 
+    std::cout << "Name::Tree()" << std::endl;
 
-	m_n = 0; // Number of items stored in the table
-	m_nBuckets = nBuckets;
-	m_buckets = new NameTreeNode*[m_nBuckets];
-	m_loadFactor = 0.5;
-	m_resizeFactor = 2;
+  m_n = 0; // Number of items stored in the table
+  m_nBuckets = nBuckets;
+  m_buckets = new Node*[m_nBuckets]; // array of node pointers
+  m_loadFactor = 0.5;
+  m_resizeFactor = 2;
 
-	/* Initialize the pointer array */
-	for(int i = 0; i < m_nBuckets; i++)
-	{
-		m_buckets[i] = NULL;
-	}
+  // Initialize the pointer array
+  for (int i = 0; i < m_nBuckets; i++)
+    m_buckets[i] = 0;
 }
-
 
 NameTree::~NameTree()
-{	
-	int i = 0;
-	for(i = 0; i < m_nBuckets; i++)
-	{
-		if(m_buckets[i] != NULL) delete m_buckets[i];
-	}
-	delete [] m_buckets;
+{ 
+  for (int i = 0; i < m_nBuckets; i++)
+  {
+    if (m_buckets[i] != 0) 
+      delete m_buckets[i];
+  }
+
+  delete [] m_buckets;
 }
 
-/*
-	/return{HT_OLD_ENTRY and HT_NEW_ENTRY}
-*/
+// Interface for using different hash functions
+uint32_t
+NameTree::hash(const Name& prefix)
+{
+  // fixed value. Used for debugging.
+  uint32_t ret = 0;
+
+  // Boost hash
+  // requires the /boost/functional/hash.hpp header file
+  boost::hash<std::string> string_hash; 
+  ret = string_hash(prefix.toUri());
+
+  // City hash
+  // std::string uri = prefix.toUri();
+  // ret = CityHash32(uri.c_str(), uri.length());
+
+  return ret;
+}
+
+// \return{HT_OLD_ENTRY and HT_NEW_ENTRY}
 int
-NameTree::insert(const Name prefix, NamePrefixEntry ** retNpe)
+NameTree::insert(const Name& prefix, Entry ** retNpe)
 {
-	std::string uri = prefix.toUri();
-	uint32_t hashValue = CityHash32(uri.c_str(), uri.length());
-	uint32_t loc = hashValue % m_nBuckets;
+  uint32_t hashValue = hash(prefix);
+  uint32_t loc = hashValue % m_nBuckets;
 
-	if(debug > 4) std::cout << "uri " << uri << " hash value = " << hashValue << "  loc = " << loc << std::endl;
+  if (debug > 4)
+  {
+    std::string uri = prefix.toUri();
+    std::cout << "uri " << uri << " hash value = " << 
+      hashValue << "  loc = " << loc << std::endl;
+  }
 
-	// Check if this Name has been stored
-	// Record the first empty Name Tree Node to insert this new Name
+  // Check if this Name has been stored
+  Node* temp = m_buckets[loc];
+  Node* tempPre = temp;  // initialize tempPre to temp
 
-	NameTreeNode * temp = m_buckets[loc];
-	NameTreeNode * tempPre = temp;	// initialize tempPre to temp
+  for (temp = m_buckets[loc]; temp != 0; temp = temp->m_next)
+  {
+    if (temp->m_npe != 0)
+    {
+      if (prefix.equals(temp->m_npe->m_prefix) == 1)
+      {
+        *retNpe = temp->m_npe;
+        return HT_OLD_ENTRY;
+      }
+    }
+    tempPre = temp;
+  }
 
-	for(temp = m_buckets[loc]; temp != NULL; temp = temp->m_next)
-	{
-		if(temp->m_npe != NULL)
-		{
-			if(prefix.equals(temp->m_npe->m_prefix) == 1){
-				*retNpe = temp->m_npe;
-				return HT_OLD_ENTRY;
-			}
-		}
-		tempPre = temp;
-	}
+  if (debug > 4) 
+    std::cout << "Did not find " << prefix.toUri() << 
+                ", need to insert it to the table\n";
 
-	if(debug > 4) std::cout << "Did not find " << prefix.toUri() << ", need to insert it to the table\n";
+  // If no bucket is empty occupied, we need to create a new node, and it is 
+  // linked from tempPre
+  Node* node = new Node();
+  node->m_pre = tempPre;
 
+  if (tempPre == 0)
+  {
+    m_buckets[loc] = node;
+  } else {
+    tempPre->m_next = node;
+  }
 
-	/* If no bucket is empty occupied, we need to create a new node, and it is linked from tempPre */
+  // Create a new NPE
+  Entry* npe = new Entry(prefix);
+  npe->setHash(hashValue);
+  node->m_npe = npe; // link the NPE to its Node
+  npe->setNode(node);
 
-	NameTreeNode * node = new NameTreeNode();
-	node->m_pre = tempPre;
+  *retNpe = npe;
 
-	if(tempPre == NULL)
-	{
-		m_buckets[loc] = node;
-	} else {
-		tempPre->m_next = node;
-	}
-
-	/* Create a new NPE */
-	NamePrefixEntry * npe = new NamePrefixEntry(prefix);
-	npe->setHash(hashValue);
-	node->m_npe = npe; // link the NPE to its Node
-	npe->setNode(node);
-
-	* retNpe = npe;
-
-	return HT_NEW_ENTRY;
+  return HT_NEW_ENTRY;
 }
 
 
-/* Name Prefix Seek. Create NPE if not found */
-int 
-NameTree::seek(const Name prefix)
+// Name Prefix Seek. Create NPE if not found
+Entry* 
+NameTree::seek(const Name& prefix)
 {
-	NamePrefixEntry * npe = NULL;
-	NamePrefixEntry * parent = NULL;
+  if (debug > 5) 
+    std::cout << "NameTree::seek()\n";
 
-	for(size_t i = 0; i <= prefix.size(); i++){
+  Entry* npe = 0;
+  Entry* parent = 0;
 
-		Name temp = prefix.getPrefix(i);
+  for (size_t i = 0; i <= prefix.size(); i++){
+    Name temp = prefix.getPrefix(i);
 
-		int res = insert(temp, &npe);  /* insert() will create the entry if it does not exist. */
+    // insert() will create the entry if it does not exist.
+    int res = insert(temp, &npe);
 
-		if(res == HT_NEW_ENTRY){
-			m_n++; /* Increase the counter */
-			npe->m_parent = parent;
+    if (res == HT_NEW_ENTRY){
+      m_n++; /* Increase the counter */
+      npe->m_parent = parent;
 
-			if(parent){
-				parent->m_children++;
-				parent->m_childrenList.push_back(npe);
-			}
-		}
+      if (parent != 0){
+        parent->m_children++;
+        parent->m_childrenList.push_back(npe);
+      }
+    }
 
-		// Threshold for resizing the hash table (50% load, increase by twice)
-		// XXX FIXME: Resizing threshold should probably be configurable 
-		if(m_n > (int) (m_loadFactor * (double) m_nBuckets)){
-			resize(m_resizeFactor * m_nBuckets);
-		}
+    if (m_n > (int) (m_loadFactor * (double) m_nBuckets)){
+      resize(m_resizeFactor * m_nBuckets);
+    }
 
-		parent = npe;
-	}
-    return 0;
-}
-
-
-// Exact Match
-// Return the address of the node that contains this prefix; 
-// Return NULL if not found
-NamePrefixEntry* 
-NameTree::lookup(const Name prefix)
-{
-	std::string uri = prefix.toUri();
-	uint32_t hashValue = CityHash32(uri.c_str(), uri.length());
-	uint32_t loc = hashValue % m_nBuckets;
-
-	if(debug > 4) std::cout << "uri " << uri << " hash value = " << hashValue << "  loc = " << loc << std::endl;
-
-	NamePrefixEntry * npe = NULL;
-	NameTreeNode * ntn = NULL;
-
-	for(ntn = m_buckets[loc]; ntn != NULL; ntn = ntn->m_next)
-	{
-		npe = ntn->m_npe;
-		if(npe != NULL){
-			if(hashValue == npe->getHash() && prefix.equals(npe->m_prefix) == 1)
-			{
-				if(debug > 4) std::cout << "found " << uri << std::endl;
-				return npe;
-			}
-		} // if npe
-	} // for ntn
-	return NULL;
+    parent = npe;
+  }
+    return npe;
 }
 
 
 // Exact Match
 // Return the address of the node that contains this prefix; 
-// Return NULL if not found
-NamePrefixEntry* 
-NameTree::lookup(const Name prefix, NameTreeNode ** retNode, NameTreeNode ** retNodePre)
+// Return 0 if not found
+Entry* 
+NameTree::lookup(const Name& prefix)
 {
-	std::string uri = prefix.toUri();
-	uint32_t hashValue = CityHash32(uri.c_str(), uri.length());
-	uint32_t loc = hashValue % m_nBuckets;
+  uint32_t hashValue = hash(prefix);
+  uint32_t loc = hashValue % m_nBuckets;
 
-	if(debug > 4) std::cout << "uri " << uri << " hash value = " << hashValue << "  loc = " << loc << std::endl;
+  std::string uri = prefix.toUri();
+  if (debug > 4)
+    std::cout << "uri " << uri << " hash value = " << hashValue <<
+                                    "  loc = " << loc << std::endl;
 
-	NamePrefixEntry * npe = NULL;
-	NameTreeNode * node = NULL;
-	NameTreeNode * nodePre = NULL;
+  Entry* npe = 0;
+  Node* ntn = 0;
 
-	for(node = m_buckets[loc]; node != NULL; node = node->m_next)
-	{
-		npe = node->m_npe;
-		if(npe != NULL){
-			if(hashValue == npe->getHash() && prefix.equals(npe->m_prefix) == 1)
-			{
-				if(debug > 4) std::cout << "found " << uri << std::endl;
-				* retNode = node;
-				* retNodePre = nodePre;
-				return npe;
-			}
-		} // if npe
-		nodePre = node;
-	} // for node
-	return NULL;
+  for (ntn = m_buckets[loc]; ntn != 0; ntn = ntn->m_next)
+  {
+    npe = ntn->m_npe;
+    if (npe != 0){
+      if (hashValue == npe->getHash() && prefix.equals(npe->m_prefix) == 1)
+      {
+        if (debug > 4) std::cout << "found " << uri << std::endl;
+        return npe;
+      }
+    } // if npe
+  } // for ntn
+  return 0;
 }
-
 
 // Longest Prefix Match
 // Return the longest matching NPE address
 // start from the full name, and then remove 1 name comp each time
-NamePrefixEntry *
-NameTree::lpm(const Name prefix){
-
-	NamePrefixEntry * npe = NULL;
-
-	for(int i = prefix.size(); i >= 0; i--)
-	{
-		npe = lookup(prefix.getPrefix(i));
-		if(npe != NULL)
-			return npe;
-	}
-	return NULL;
-}
-
-/* delete a NPE based on a prefix */
-// Return 0: failure
-// Return 1: success
-int
-NameTree::deletePrefix(const Name prefix)
+Entry*
+NameTree::lpm(const Name& prefix)
 {
-	for(int i = prefix.size(); i >= 0; i--)
-	{
-		Name temp = prefix.getPrefix(i);
-		NameTreeNode * node = NULL;
-		NameTreeNode * nodePre = NULL;
-		NamePrefixEntry * npe = lookup(temp, &node, &nodePre);
+  Entry* npe = 0;
 
-		if(npe == NULL) return 0;
-
-		// if this entry can be deleted (only if it has no child and no fib and no pit)
-		if(npe->m_children == 0 && npe->m_fib == NULL && npe->m_pitList.size() == 0){
-			// then this entry can be deleted and its parent reduces one child
-			if(npe->m_parent)
-			{
-				NamePrefixEntry * parent = npe->m_parent;
-				parent->m_children--;	//Root node does not have parent.
-				// delete npe from the parent's children list
-				int check = 0;
-				size_t childrenListSize = parent->m_childrenList.size();
-				for(size_t i = 0; i < childrenListSize; i++)
-				{
-					if(parent->m_childrenList[i] == npe) // compareing memory address
-					{
-						parent->m_childrenList[i] = parent->m_childrenList[childrenListSize-1];
-						parent->m_childrenList.pop_back();
-						check = 1;
-						break;
-					}
-				}
-				assert(check == 1);
-			}
-
-			if(nodePre != NULL)
-			{
-				nodePre->m_next = node->m_next;
-			} else {
-				m_buckets[npe->m_hash % m_nBuckets] = node->m_next;
-			}
-
-			delete npe;
-			delete node;
-			m_n--;
-		}
-	}
-    return 1;
+  for(int i = prefix.size(); i >= 0; i--)
+  {
+    npe = lookup(prefix.getPrefix(i));
+    if(npe != 0)
+      return npe;
+  }
+  return 0;
 }
 
-
-/*
-	/return{0: failure, 1: success}
-*/
-int
-NameTree::deleteNPEIfEmpty(NamePrefixEntry* npe)
+// return{false: failure, true: success}
+bool
+NameTree::deleteNpeIfEmpty(Entry* npe)
 {
-	/* first check if this NPE can be deleted */
-	if(npe->m_children == 0 && npe->m_fib == NULL && npe->m_pitList.size() == 0){
+  if (debug > 5) 
+    std::cout << "name-tree.cpp deleteNpeIfEmpty()\n";
 
-		/* update child-related info in the parent NPE */
-		NamePrefixEntry * parent = npe->m_parent;
+  assert(npe != 0);
 
-		if(parent != NULL){
-			parent->m_children--;
+  // first check if this NPE can be deleted 
+  if (npe->m_children == 0 && npe->m_fib == 0 && npe->m_pitList.size() == 0){
 
-			int check = 0;
-			size_t size = parent->m_childrenList.size();
-			for(size_t i = 0; i < size; i++)
-			{
-				if(parent->m_childrenList[i] == npe)
-				{
-					parent->m_childrenList[i] = parent->m_childrenList[size-1];
-					parent->m_childrenList.pop_back();
-					check = 1;
-					break;
-				}
-			}
+    if (debug > 5) 
+      std::cout << "Empty NPE\n";
 
-			assert(check == 1);
-		}
+    // update child-related info in the parent NPE 
+    Entry* parent = npe->m_parent;
 
-		/* remove this NPE and its Name Tree Node */
-		NameTreeNode * node = npe->getNode();
-		NameTreeNode * nodePre = node->m_pre;
+    if (parent != 0){
+      parent->m_children--;
 
-		if(nodePre != NULL)
-		{
-			nodePre->m_next = node->m_next;
-		} else {
-			m_buckets[npe->m_hash % m_nBuckets] = node->m_next;
-		}
-		node->m_next->m_pre = nodePre;
+      int check = 0;
+      size_t size = parent->m_childrenList.size();
+      for (size_t i = 0; i < size; i++)
+      {
+        if (parent->m_childrenList[i] == npe)
+        {
+          parent->m_childrenList[i] = parent->m_childrenList[size-1];
+          parent->m_childrenList.pop_back();
+          check = 1;
+          break;
+        }
+      }
 
-		delete npe;
-		delete node;
-		m_n--;
+      assert(check == 1);
+    }
 
-		if(parent)
-			deleteNPEIfEmpty(parent);
+    // remove this NPE and its Name Tree Node 
+    Node* node = npe->getNode();
+    Node* nodePre = node->m_pre;
 
-	} // if this npe is empty
+    // configure the pre node
+    if (nodePre != 0)
+    {
+      nodePre->m_next = node->m_next;
+    } else {
+      m_buckets[npe->m_hash % m_nBuckets] = node->m_next;
+    }
 
-	return 1;
+    // link the pre node with the next node (skip the deleted one)
+    if (node->m_next) 
+      node->m_next->m_pre = nodePre;
+
+    delete npe;
+    delete node;
+    m_n--;
+
+    if (parent != 0) 
+      deleteNpeIfEmpty(parent);
+
+    return true;
+
+  } // if this npe is empty
+
+  return false;
 }
 
-void
+std::vector<nt::Entry *> *
 NameTree::fullEnumerate()
 {
-	NameTreeNode * node = NULL;
+  std::vector<nt::Entry *> * ret = new std::vector<nt::Entry *>;
+  ret->clear();
 
-	for(int i = 0; i < m_nBuckets; i++)
-	{
-		for(node = m_buckets[i]; node != NULL; node = node->m_next)
-		{
-			if(node->m_npe)
-			{
-				std::cout << "Bucket" << i << "\t" << node->m_npe->m_prefix.toUri() << std::endl;
-			}
-		}
-	}
+  Node* node = 0;
+
+  for (int i = 0; i < m_nBuckets; i++)
+  {
+    for (node = m_buckets[i]; node != 0; node = node->m_next)
+    {
+      if (node->m_npe)
+      {
+        // std::cout << "Bucket" << i << "\t" << node->m_npe->m_prefix.toUri() << std::endl;
+        ret->push_back(node->m_npe);
+      }
+    }
+  }
+
+  return ret;
 }
 
-
-void
-NameTree::partialEnumerate(const Name prefix)
+// Helper function for partialEnumerate()
+void 
+NameTree::partialEnumerateAddChildren(Entry* npe, std::vector<Entry *> * ret)
 {
-	// find the hash bucket corresponding to that prefix
-	// then enumerate all of its children...
-	NamePrefixEntry * npe = lookup(prefix);
+  assert(npe != 0);
 
-	if(npe == NULL){
-		/* should probably return a vlaue, currently just print a statement */
-		std::cout << "Error::partialEnumerate, prefix does not exist\n";
-		return;
-	} else {
-		/* go through its children list */
-		for(size_t i = 0; i < npe->m_childrenList.size(); i++){
-			std::cout << npe->m_childrenList[i]->m_prefix.toUri() << std::endl;
-		}
-	}
+  ret->push_back(npe);
+  for (size_t i = 0; i < npe->m_childrenList.size(); i++)
+  {
+    Entry* temp = npe->m_childrenList[i];
+    partialEnumerateAddChildren(temp, ret);
+  }
 }
 
+std::vector<Entry *> *
+NameTree::partialEnumerate(const Name& prefix)
+{
+  std::vector<Entry *> * ret = new std::vector<nt::Entry *>;
+  ret->clear();
+
+  // find the hash bucket corresponding to that prefix
+  Entry * npe = lookup(prefix);
+
+  if (npe == 0){
+    return ret;
+  } else {
+    // go through its children list via depth-first-search
+    ret->push_back(npe);
+    for (size_t i = 0; i < npe->m_childrenList.size(); i++)
+    {
+      Entry* temp = npe->m_childrenList[i];
+      partialEnumerateAddChildren(temp, ret);
+    }
+  }
+
+  return ret;
+}
 
 // Hash Table Resize
 void
 NameTree::resize(int newNBuckets)
 {
-	if(debug > 4) std::cout << "NameTree::resize()" << std::endl;
+  if (debug > 5) 
+    std::cout << "NameTree::resize()" << std::endl;
 
-	NameTreeNode ** newBuckets = new NameTreeNode*[newNBuckets];
-	int count = 0;
+  Node** newBuckets = new Node*[newNBuckets];
+  int count = 0;
 
-	/* referenced ccnx hashtb.c hashtb_rehash() */
+  // referenced ccnx hashtb.c hashtb_rehash() 
 
-	NameTreeNode ** pp = NULL;
-	NameTreeNode * p = NULL;
-	NameTreeNode * pre = NULL;
-	NameTreeNode * q = NULL; // record p->m_next
-	uint32_t h;
-	int i;
-	uint32_t b;
+  Node** pp = 0;
+  Node* p = 0;
+  Node* pre = 0;
+  Node* q = 0; // record p->m_next
+  int i;
+  uint32_t h;
+  uint32_t b;
+  
+  for (i = 0; i < newNBuckets; i++)
+    newBuckets[i] = 0;
 
-	for(i = 0; i < newNBuckets; i++)
-	{
-		newBuckets[i] = NULL;
-	}
+  for (i = 0; i < m_nBuckets; i++)
+  {
+    for (p = m_buckets[i]; p != 0; p = q) 
+    {
+      count++;
+      q = p->m_next;
+      assert(p->m_npe != 0); // XXX FIXME keep the assert statement during testing phase
+      h = p->m_npe->m_hash;
+      b = h % newNBuckets;
+      for (pp = &newBuckets[b]; *pp != 0; pp = &((*pp)->m_next))
+      {
+        pre = *pp;
+        continue;
+      }
+      p->m_pre = pre;
+      p->m_next = *pp; // Actually *pp always == 0 in this case
+      *pp = p;
+    }
+  }
 
-	for(i = 0; i < m_nBuckets; i++)
-	{
-		for(p = m_buckets[i]; p != NULL; p = q) 
-		{
-			count++;
-			q = p->m_next;
-			if(p->m_npe == NULL){
-				exit(1);
-			}
-			h = p->m_npe->m_hash;
-			b = h % newNBuckets;
-			for(pp = &newBuckets[b]; *pp != NULL; pp = &((*pp)->m_next))
-			{
-				pre = *pp;
-				continue;
-			}
-			p->m_pre = pre;
-			p->m_next = *pp; // Actually *pp always == NULL in this case
-			*pp = p;
-		}
-	}
+  assert(count == m_n);
 
-	// XXX FIXME Throw out an exception instead of printing out error messages.
-	if(count != m_n){
-		std::cout << "Error hash table resize() count != m_n" << std::endl;
-		exit(1);
-	}
+  m_nBuckets = newNBuckets;
+  Node** oldBuckets = m_buckets;
+  m_buckets = newBuckets;
 
-	m_nBuckets = newNBuckets;
-	NameTreeNode ** oldBuckets = m_buckets;
-	m_buckets = newBuckets;
-
-	delete oldBuckets;
+  delete oldBuckets;
 }
-
 
 // For debugging
 void 
 NameTree::dump()
 {
-	NameTreeNode * node = NULL;
-	NamePrefixEntry * npe;
+  if (debug != 0)
+  {
+    Node* node = 0;
+    Entry* npe;
 
-	if(debug > 4) std::cout << "dump() --------------------------\n";
+    if (debug > 4) 
+      std::cout << "dump() --------------------------\n";
 
-	for(int i = 0; i < m_nBuckets; i++){
+    for (int i = 0; i < m_nBuckets; i++){
+      for (node = m_buckets[i]; node != 0; node = node->m_next){
+        npe = node->m_npe;
 
-		for(node = m_buckets[i]; node != NULL; node = node->m_next){
+        // if the NPE exist, dump its information 
+        if (npe != 0){
+          std::cout << "Bucket" << i << "\t" << npe->m_prefix.toUri() << std::endl;
+          std::cout << "\t\tHash " << npe->m_hash << std::endl;
 
-			npe = node->m_npe;
+          if (npe->m_parent != 0){
+            std::cout << "\t\tparent->" << npe->m_parent->m_prefix.toUri();
+          } else {
+            std::cout << "\t\tROOT";
+          }
+          std::cout << std::endl;
 
-			/* if the NPE exist, dump its information*/
-			if(npe != NULL){
-				std::cout << "Bucket" << i << "\t" << npe->m_prefix.toUri() << std::endl;
-				std::cout << "\t\tHash " << npe->m_hash << std::endl;
+          if (npe->m_children != 0){
+            std::cout << "\t\tchildren = " << npe->m_children << std::endl;
+            
+            for (size_t j = 0; j < npe->m_childrenList.size(); j++){
+              std::cout << "\t\t\tChild " << j << " " << 
+                npe->m_childrenList[j]->getPrefix().toUri() << std::endl;
+            }
+          }
 
-				if(npe->m_parent != NULL){
-					std::cout << "\t\tparent->" << npe->m_parent->m_prefix.toUri();
-				} else {
-					std::cout << "\t\tROOT";
-				}
-				std::cout << std::endl;
+        } // if npe != 0
 
-				if(npe->m_children != 0){
-					std::cout << "\t\tchildren = " << npe->m_children << std::endl;
-				}
+      } // for node
+    } // for int i
 
-			} // if npe != NULL
-
-
-		} // for node
-	} // for int i
-
-	std::cout << "Bucket count = " << m_nBuckets << std::endl;
-	std::cout << "Stored item = " << m_n << std::endl;
-	std::cout << "--------------------------\n";
+    std::cout << "Bucket count = " << m_nBuckets << std::endl;
+    std::cout << "Stored item = " << m_n << std::endl;
+    std::cout << "--------------------------\n";
+  }
 }
 
+} // namespace nt
 } // namespace nfd
-
-
-int main()
-{
-	using namespace std;
-	using namespace nfd;
-	
-	// if(debug) cout << "Testing Name Prefix Hash Table Implementation" << endl;
-
-	int nameTreeSize = 1024;
-
-	NameTree * nt = new NameTree(nameTreeSize);
-
-	Name aName("/a/b/c");
-	Name aName1("/a");
-	Name aName2("/a/b");
-	nt->seek(aName);
-
-	NamePrefixEntry * npe = NULL;
-
-	npe = nt->lookup(aName1);
-	if(npe) cout << "/a/ exist = " << npe->m_prefix.toUri() << endl;
-
-	npe = nt->lookup(aName2);
-	if(npe) cout << "/a/b/ exist = " << npe->m_prefix.toUri() << endl;
-
-	npe = nt->lookup(aName);
-	if(npe) cout << "/a/b/c/ exist = " << npe->m_prefix.toUri() << endl;
-
-	Name bName("/a/b/c/d/e/f/g/");
-
-	npe = nt->lookup(bName);
-	if(npe){
-		cout << "Error...lookup /a/b/c/d/ \n";
-		exit(1);
-	} else {
-		cout << "succeeded, did not find /a/b/c/d/e/f/g/" << endl;
-	}
-
-	npe = nt->lpm(bName);
-	if(npe) cout << "/a/b/c/d/e/f/g/'s LPM prefix is " << npe->m_prefix.toUri() << endl;
-
-	Name abcd("/a/b/c/d");
-	nt->seek(abcd);
-	npe = nt->lpm(bName);
-	cout << "after inserint /a/b/c/d/" << endl;;
-	if(npe) cout << "/a/b/c/d/e/f/g/'s LPM prefix is " << npe->m_prefix.toUri() << endl;
-
-	cout << "--------------------------\n";
-	cout << "full enumerateionn\n";
-	cout << "--------------------------\n";
-
-	nt->fullEnumerate();
-
-	cout << "--------------------------\n";
-	cout << "partial enumerateion\n";
-	cout << "--------------------------\n";
-	
-	Name cName1("/a/b/c/1/");
-	Name cName2("/a/b/c/2/");
-	Name cName3("/a/b/c/3/");
-	Name cName4("/a/b/c/4/");
-	Name cName5("/a/b/d/1/");
-	Name cName6("/a/b/e/1/");
-	Name cName7("/a/b/f/1/");
-	Name cName8("/a/b/g/1/");
-	Name cName9("/a/c/g/1/");
-
-	nt->seek(cName1);
-	nt->seek(cName2);
-	nt->seek(cName3);
-	nt->seek(cName4);
-	nt->seek(cName5);
-	nt->seek(cName6);
-	nt->seek(cName7);
-	nt->seek(cName8);
-	nt->seek(cName9);
-
-	cout << "/a/:children" << endl;
-	Name dName1("a");
-	nt->partialEnumerate(dName1);
-	cout << "--------------------------\n";
-
-	cout << "/a/b/ children:" << endl;
-	Name dName2("a/b");
-	nt->partialEnumerate(dName2);
-	cout << "--------------------------\n";
-
-	cout << "/a/b/c/ children:" << endl;
-	Name dName3("a/b/c");
-	nt->partialEnumerate(dName3);
-	cout << "--------------------------\n";
-
-	cout << "/does_not_exist/: children:" << endl;
-	Name dName4("/does_not_exist");
-	nt->partialEnumerate(dName4);
-	cout << "--------------------------\n";
-
-	nt = new NameTree(8);
-
-	return 0;
-}
-

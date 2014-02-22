@@ -4,109 +4,104 @@
  * See COPYING for copyright and distribution information.
  */
 
-
-/*
-
-TODO:
-1. add namespace nfd
-2. currenlty, all the class members are in public, some of them should be moved to private 
-3. Remove the m_pre pointer in the NameTreeNode class
-
-*/
-
+// Name Prefix Hash Table
 
 #ifndef NFD_TABLE_NAME_TREE_HPP
 #define NFD_TABLE_NAME_TREE_HPP
 
 #include <iostream>
-#include <ndn-cpp-dev/common.hpp>
 
+#include "common.hpp"
 #include "name-tree-entry.hpp"
-
-typedef ndn::Name Name;
+#include <boost/functional/hash.hpp>
 
 namespace nfd{
+namespace nt{
 
 /** \class NameTree
  *  \brief represents the Name Prefix Hash Table
  */
-
-
 class NameTree
 {
 public:
-	NameTree(int nBuckets);
-	~NameTree();
+  NameTree(int nBuckets);
 
-	// Initialize the name tree data structure
-	int 
-	initNameTree(int size);
+  ~NameTree();
 
-	// NameTree Delete
-	int
-	deletePrefix(const Name prefix);
+  // Get current load
+  const int
+  getN();
 
-	// NameTree Delete Name Prefix Entry
-	int
-	deleteNPEIfEmpty(NamePrefixEntry* npe);
+  // Get Bucket count
+  const int
+  getNBuckets();
 
-	// NameTree Lookup
-	NamePrefixEntry * 
-	lookup(const Name prefix);
+  uint32_t 
+  hash(const Name& prefix);
 
-	// NameTree Longest Prefix Lookup
-	NamePrefixEntry *
-	lpm(ndn::Name prefix);
+  // NameTree Seek
+  Entry *
+  seek(const Name& prefix);
 
-	// Hash Table Resize
-	void
-	resize(int newNBuckets);
+  // NameTree Lookup
+  Entry * 
+  lookup(const Name& prefix);
 
-	// NameTree Seek
-	int
-	seek(const Name prefix);
+  // NameTree Delete Name Prefix Entry
+  bool
+  deleteNpeIfEmpty(Entry* npe);
 
-	// Get current load
-	int
-	getN();
+  // NameTree Longest Prefix Lookup
+  Entry *
+  lpm(const ndn::Name& prefix);
 
-	// Get Bucket count
-	int
-	getNBuckets();
+  // Hash Table Resize
+  void
+  resize(int newNBuckets);
 
-	// Enumerate all the non-empty NPHT entries
-	void
-	fullEnumerate();
+  // Enumerate all the non-empty NPHT entries
+  std::vector<nt::Entry *> *
+  fullEnumerate();
 
-	// Enumerate all the children of a specified prefix
-	void
-	partialEnumerate(const Name prefix);
+  // Enumerate all the children of a specified prefix
+ 
 
-	// Dump the Name Tree for debugging
-	void 
-	dump();
+  std::vector<Entry *> *
+  partialEnumerate(const Name& prefix);
+
+  // Dump the Name Tree for debugging
+  void 
+  dump();
 
 private:
-	int m_n;	// Number of items being stored
-	int m_nBuckets; // Number of hash buckets
-	NameTreeNode ** m_buckets; // Name Tree Buckets in the NPHT
-	double m_loadFactor;
-	int m_resizeFactor;
+  int m_n;  // Number of items being stored
+  int m_nBuckets; // Number of hash buckets
+  double m_loadFactor;
+  int m_resizeFactor;
+  Node** m_buckets; // Name Tree Buckets in the NPHT
 
-	// NameTree Insert
-	int
-	insert(ndn::Name prefix, NamePrefixEntry ** ret_npe);
+  // NameTree Insert, can called only by seek() function
+  int
+  insert(const ndn::Name& prefix, Entry** retNpe);
 
-	// NameTree Lookup
-	NamePrefixEntry * 
-	lookup(const Name prefix, NameTreeNode ** retNode, NameTreeNode ** retNodePre);
+  void 
+  partialEnumerateAddChildren(Entry* npe, std::vector<Entry *> * ret);
 
  };
 
+inline const int
+NameTree::getN()
+{
+  return m_n;
+}
+
+inline const int
+NameTree::getNBuckets()
+{
+  return m_nBuckets;
+}
+
+} // namespace nt
 } // namespace nfd
 
 #endif // NFD_TABLE_NAME_TREE_HPP
-
-
-
-
