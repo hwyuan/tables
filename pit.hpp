@@ -7,15 +7,8 @@
 #ifndef NFD_TABLE_PIT_HPP
 #define NFD_TABLE_PIT_HPP
 
-/*
-TODO:
-- Keep the interface stay the same
-- Add class members to use name-tree if they have to be added here
-*/
-
 #include "name-tree.hpp"
 #include "pit-entry.hpp"
-
 namespace nfd {
 namespace pit {
 
@@ -35,9 +28,10 @@ typedef std::vector<shared_ptr<pit::Entry> > DataMatchResult;
 class Pit : noncopyable
 {
 public:
-  PIT();
-  
-  Pit(NameTree * nt);
+  Pit();
+
+  explicit
+  Pit(NameTree* nt);
   
   ~Pit();
   
@@ -47,21 +41,21 @@ public:
    */
   std::pair<shared_ptr<pit::Entry>, bool>
   insert(const Interest& interest);
-  
+ 
   /** \brief performs a Data match
    *  \return{ an iterable of all PIT entries matching data }
    */
   shared_ptr<pit::DataMatchResult>
   findAllDataMatches(const Data& data) const;
-  
-  /// removes a PIT entry
+
+  /**
+   *  \brief Remove a PIT Entry
+   */  
   void
   remove(shared_ptr<pit::Entry> pitEntry);
 
 private:
-  std::list<shared_ptr<pit::Entry> > m_table;
-
-  NameTree * m_nt;
+  NameTree* m_nt;
 };
 
 } // namespace nfd
