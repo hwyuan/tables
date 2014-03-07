@@ -4,447 +4,636 @@
  * See COPYING for copyright and distribution information.
  */
 
-// Name Prefix Hash Table
+// Name Tree (Name Prefix Hash Table)
 
-#include <algorithm>
-#include <iostream>
-#include <sstream>
-#include <boost/algorithm/string.hpp>
 #include "name-tree.hpp"
+#include "core/logger.hpp"
 
-/*
+namespace nfd {
 
-- KNOWN ISSUES -
-Smart pointers have been used in NFD (fib.cpp and pit.cpp, while currently in Name-Tree, we
-store native pointers. We need to double check to make sure this would
-not create any problems.
+NFD_LOG_INIT("NameTree");
 
-*/
+namespace name_tree {
 
-namespace nfd{
-namespace nt{
-
-#define HT_OLD_ENTRY 0
-#define HT_NEW_ENTRY 1
-
-int debug = 0;
-
-NameTree::NameTree(int nBuckets)
-{ 
-  if (debug > 4) 
-    std::cout << "Name::Tree()" << std::endl;
-
-  m_n = 0; // Number of items stored in the table
-  m_nBuckets = nBuckets;
-  m_buckets = new Node*[m_nBuckets]; // array of node pointers
-  m_loadFactor = 0.5;
-  m_resizeFactor = 2;
-
-  // Initialize the pointer array
-  for (int i = 0; i < m_nBuckets; i++)
-    m_buckets[i] = 0;
-}
-
-NameTree::~NameTree()
-{ 
-  for (int i = 0; i < m_nBuckets; i++)
-  {
-    if (m_buckets[i] != 0) 
-      delete m_buckets[i];
-  }
-
-  delete [] m_buckets;
-}
-
-// Interface for using different hash functions
+// Interface of different hash functions
 uint32_t
-NameTree::hash(const Name& prefix)
+hashName(const Name& prefix)
 {
-  // fixed value. Used for debugging.
+  // fixed value. Used for debugging only.
   uint32_t ret = 0;
 
   // Boost hash
   // requires the /boost/functional/hash.hpp header file
-  boost::hash<std::string> string_hash; 
-  ret = string_hash(prefix.toUri());
-
-  // City hash
-  // std::string uri = prefix.toUri();
-  // ret = CityHash32(uri.c_str(), uri.length());
+  // TODO: improve hash efficiency with Name type
+  boost::hash<std::string> stringHash;
+  ret = stringHash(prefix.toUri());
 
   return ret;
 }
 
-// \return{HT_OLD_ENTRY and HT_NEW_ENTRY}
-int
-NameTree::insert(const Name& prefix, Entry ** retNpe)
+} // namespace name_tree
+
+NameTree::NameTree(size_t nBuckets)
+  : m_nItems(0)
+  , m_nBuckets(nBuckets)
+  , m_loadFactor(0.5)
+  , m_resizeFactor(2)
 {
-  uint32_t hashValue = hash(prefix);
+  m_resizeThreshold = static_cast<size_t>(m_loadFactor *
+                                          static_cast<double>(m_nBuckets));
+
+  // array of node pointers
+  m_buckets = new name_tree::Node*[m_nBuckets];
+  // Initialize the pointer array
+  for (size_t i = 0; i < m_nBuckets; i++)
+    m_buckets[i] = 0;
+}
+
+NameTree::~NameTree()
+{
+  for (size_t i = 0; i < m_nBuckets; i++)
+    {
+      if (m_buckets[i] != 0)
+        delete m_buckets[i];
+    }
+
+  delete [] m_buckets;
+}
+
+// insert() is a private function, and called by only lookup()
+std::pair<shared_ptr<name_tree::Entry>, bool>
+NameTree::insert(const Name& prefix)
+{
+  NFD_LOG_DEBUG("insert " << prefix);
+
+  uint32_t hashValue = name_tree::hashName(prefix);
   uint32_t loc = hashValue % m_nBuckets;
 
-  if (debug > 4)
-  {
-    std::string uri = prefix.toUri();
-    std::cout << "uri " << uri << " hash value = " << 
-      hashValue << "  loc = " << loc << std::endl;
-  }
+  NFD_LOG_DEBUG("Name " << prefix << " hash value = " << hashValue << "  location = " << loc);
 
   // Check if this Name has been stored
-  Node* temp = m_buckets[loc];
-  Node* tempPre = temp;  // initialize tempPre to temp
+  name_tree::Node* node = m_buckets[loc];
+  name_tree::Node* nodePrev = node;  // initialize nodePrev to node
 
-  for (temp = m_buckets[loc]; temp != 0; temp = temp->m_next)
-  {
-    if (temp->m_npe != 0)
+  for (node = m_buckets[loc]; node != 0; node = node->m_next)
     {
-      if (prefix.equals(temp->m_npe->m_prefix) == 1)
-      {
-        *retNpe = temp->m_npe;
-        return HT_OLD_ENTRY;
-      }
+      if (static_cast<bool>(node->m_entry))
+        {
+          if (prefix == node->m_entry->m_prefix)
+            {
+              return std::make_pair(node->m_entry, false); // false: old entry
+            }
+        }
+      nodePrev = node;
     }
-    tempPre = temp;
-  }
 
-  if (debug > 4) 
-    std::cout << "Did not find " << prefix.toUri() << 
-                ", need to insert it to the table\n";
+  NFD_LOG_DEBUG("Did not find " << prefix << ", need to insert it to the table");
 
-  // If no bucket is empty occupied, we need to create a new node, and it is 
-  // linked from tempPre
-  Node* node = new Node();
-  node->m_pre = tempPre;
+  // If no bucket is empty occupied, we need to create a new node, and it is
+  // linked from nodePrev
+  node = new name_tree::Node();
+  node->m_prev = nodePrev;
 
-  if (tempPre == 0)
-  {
-    m_buckets[loc] = node;
-  } else {
-    tempPre->m_next = node;
-  }
+  if (nodePrev == 0)
+    {
+      m_buckets[loc] = node;
+    }
+  else
+    {
+      nodePrev->m_next = node;
+    }
 
-  // Create a new NPE
-  Entry* npe = new Entry(prefix);
-  npe->setHash(hashValue);
-  node->m_npe = npe; // link the NPE to its Node
-  npe->setNode(node);
+  // Create a new Entry
+  shared_ptr<name_tree::Entry> entry(make_shared<name_tree::Entry>(prefix));
+  entry->setHash(hashValue);
+  node->m_entry = entry; // link the Entry to its Node
+  entry->m_node = node; // link the node to Entry. Used in eraseEntryIfEmpty.
 
-  *retNpe = npe;
-
-  return HT_NEW_ENTRY;
+  return std::make_pair(entry, true); // true: new entry
 }
 
-
-// Name Prefix Seek. Create NPE if not found
-Entry* 
-NameTree::seek(const Name& prefix)
-{
-  if (debug > 5) 
-    std::cout << "NameTree::seek()\n";
-
-  Entry* npe = 0;
-  Entry* parent = 0;
-
-  for (size_t i = 0; i <= prefix.size(); i++){
-    Name temp = prefix.getPrefix(i);
-
-    // insert() will create the entry if it does not exist.
-    int res = insert(temp, &npe);
-
-    if (res == HT_NEW_ENTRY){
-      m_n++; /* Increase the counter */
-      npe->m_parent = parent;
-
-      if (parent != 0){
-        parent->m_children++;
-        parent->m_childrenList.push_back(npe);
-      }
-    }
-
-    if (m_n > (int) (m_loadFactor * (double) m_nBuckets)){
-      resize(m_resizeFactor * m_nBuckets);
-    }
-
-    parent = npe;
-  }
-    return npe;
-}
-
-
-// Exact Match
-// Return the address of the node that contains this prefix; 
-// Return 0 if not found
-Entry* 
+// Name Prefix Lookup. Create Name Tree Entry if not found
+shared_ptr<name_tree::Entry>
 NameTree::lookup(const Name& prefix)
 {
-  uint32_t hashValue = hash(prefix);
+  NFD_LOG_DEBUG("lookup " << prefix);
+
+  shared_ptr<name_tree::Entry> entry;
+  shared_ptr<name_tree::Entry> parent;
+
+  for (size_t i = 0; i <= prefix.size(); i++)
+    {
+      Name temp = prefix.getPrefix(i);
+
+      // insert() will create the entry if it does not exist.
+      std::pair<shared_ptr<name_tree::Entry>, bool> ret = insert(temp);
+      entry = ret.first;
+
+      if (ret.second == true)
+        {
+          m_nItems++; /* Increase the counter */
+          entry->m_parent = parent;
+
+          if (static_cast<bool>(parent))
+            {
+              parent->m_children.push_back(entry);
+            }
+        }
+
+      if (m_nItems > m_resizeThreshold)
+        {
+          resize(m_resizeFactor * m_nBuckets);
+        }
+
+      parent = entry;
+    }
+  return entry;
+}
+
+// Exact Match
+shared_ptr<name_tree::Entry>
+NameTree::findExactMatch(const Name& prefix) const
+{
+  NFD_LOG_DEBUG("findExactMatch " << prefix);
+
+  uint32_t hashValue = name_tree::hashName(prefix);
   uint32_t loc = hashValue % m_nBuckets;
 
-  std::string uri = prefix.toUri();
-  if (debug > 4)
-    std::cout << "uri " << uri << " hash value = " << hashValue <<
-                                    "  loc = " << loc << std::endl;
+  NFD_LOG_DEBUG("Name " << prefix << " hash value = " << hashValue <<
+                "  location = " << loc);
 
-  Entry* npe = 0;
-  Node* ntn = 0;
+  shared_ptr<name_tree::Entry> entry;
+  name_tree::Node* node = 0;
 
-  for (ntn = m_buckets[loc]; ntn != 0; ntn = ntn->m_next)
-  {
-    npe = ntn->m_npe;
-    if (npe != 0){
-      if (hashValue == npe->getHash() && prefix.equals(npe->m_prefix) == 1)
-      {
-        if (debug > 4) std::cout << "found " << uri << std::endl;
-        return npe;
-      }
-    } // if npe
-  } // for ntn
-  return 0;
+  for (node = m_buckets[loc]; node != 0; node = node->m_next)
+    {
+      entry = node->m_entry;
+      if (static_cast<bool>(entry))
+        {
+          if (hashValue == entry->getHash() && prefix == entry->getPrefix())
+            {
+              return entry;
+            }
+        } // if entry
+    } // for node
+
+  // if not found, the default value of entry (null pointer) will be returned
+  entry.reset();
+  return entry;
 }
 
 // Longest Prefix Match
-// Return the longest matching NPE address
+// Return the longest matching Entry address
 // start from the full name, and then remove 1 name comp each time
-Entry*
-NameTree::lpm(const Name& prefix)
+shared_ptr<name_tree::Entry>
+NameTree::findLongestPrefixMatch(const Name& prefix, const name_tree::EntrySelector& entrySelector)
 {
-  Entry* npe = 0;
+  NFD_LOG_DEBUG("findLongestPrefixMatch " << prefix);
 
-  for(int i = prefix.size(); i >= 0; i--)
-  {
-    npe = lookup(prefix.getPrefix(i));
-    if(npe != 0)
-      return npe;
-  }
-  return 0;
+  shared_ptr<name_tree::Entry> entry;
+
+  for (int i = prefix.size(); i >= 0; i--)
+    {
+      entry = findExactMatch(prefix.getPrefix(i));
+      if (static_cast<bool>(entry) && entrySelector(*entry))
+        return entry;
+    }
+
+  return shared_ptr<name_tree::Entry>();
 }
 
-// return{false: failure, true: success}
+// return {false: this entry is not empty, true: this entry is empty and erased}
 bool
-NameTree::deleteNpeIfEmpty(Entry* npe)
+NameTree::eraseEntryIfEmpty(shared_ptr<name_tree::Entry> entry)
 {
-  if (debug > 5) 
-    std::cout << "name-tree.cpp deleteNpeIfEmpty()\n";
+  BOOST_ASSERT(static_cast<bool>(entry));
 
-  assert(npe != 0);
+  NFD_LOG_DEBUG("eraseEntryIfEmpty " << entry->getPrefix());
 
-  // first check if this NPE can be deleted 
-  if (npe->m_children == 0 && npe->m_fib == 0 && npe->m_pitList.size() == 0){
+  // first check if this Entry can be erased
+  if (entry->isEmpty())
+    {
+      // update child-related info in the parent
+      shared_ptr<name_tree::Entry> parent = entry->getParent();
 
-    if (debug > 5) 
-      std::cout << "Empty NPE\n";
-
-    // update child-related info in the parent NPE 
-    Entry* parent = npe->m_parent;
-
-    if (parent != 0){
-      parent->m_children--;
-
-      int check = 0;
-      size_t size = parent->m_childrenList.size();
-      for (size_t i = 0; i < size; i++)
-      {
-        if (parent->m_childrenList[i] == npe)
+      if (static_cast<bool>(parent))
         {
-          parent->m_childrenList[i] = parent->m_childrenList[size-1];
-          parent->m_childrenList.pop_back();
-          check = 1;
-          break;
+          std::vector<shared_ptr<name_tree::Entry> >& parentChildrenList =
+            parent->getChildren();
+
+          bool isFound = false;
+          size_t size = parentChildrenList.size();
+          for (size_t i = 0; i < size; i++)
+            {
+              if (parentChildrenList[i] == entry)
+                {
+                  parentChildrenList[i] = parentChildrenList[size - 1];
+                  parentChildrenList.pop_back();
+                  isFound = true;
+                  break;
+                }
+            }
+
+          BOOST_ASSERT(isFound == true);
         }
-      }
 
-      assert(check == 1);
-    }
+      // remove this Entry and its Name Tree Node
+      name_tree::Node* node = entry->m_node;
+      name_tree::Node* nodePrev = node->m_prev;
 
-    // remove this NPE and its Name Tree Node 
-    Node* node = npe->getNode();
-    Node* nodePre = node->m_pre;
+      // configure the previous node
+      if (nodePrev != 0)
+        {
+          // link the previous node to the next node
+          nodePrev->m_next = node->m_next;
+        }
+      else
+        {
+          m_buckets[entry->getHash() % m_nBuckets] = node->m_next;
+        }
 
-    // configure the pre node
-    if (nodePre != 0)
-    {
-      nodePre->m_next = node->m_next;
-    } else {
-      m_buckets[npe->m_hash % m_nBuckets] = node->m_next;
-    }
+      // link the previous node with the next node (skip the erased one)
+      if (node->m_next != 0)
+        {
+          node->m_next->m_prev = nodePrev;
+          node->m_next = 0;
+        }
 
-    // link the pre node with the next node (skip the deleted one)
-    if (node->m_next) 
-      node->m_next->m_pre = nodePre;
+      BOOST_ASSERT(node->m_next == 0);
 
-    delete npe;
-    delete node;
-    m_n--;
+      m_nItems--;
+      delete node;
 
-    if (parent != 0) 
-      deleteNpeIfEmpty(parent);
+      if (static_cast<bool>(parent))
+        eraseEntryIfEmpty(parent);
 
-    return true;
+      return true;
 
-  } // if this npe is empty
+    } // if this entry is empty
 
-  return false;
+  return false; // if this entry is not empty
 }
 
-std::vector<nt::Entry *> *
-NameTree::fullEnumerate()
+NameTree::const_iterator
+NameTree::fullEnumerate(const name_tree::EntrySelector& entrySelector)
 {
-  std::vector<nt::Entry *> * ret = new std::vector<nt::Entry *>;
-  ret->clear();
+  NFD_LOG_DEBUG("fullEnumerate");
 
-  Node* node = 0;
-
-  for (int i = 0; i < m_nBuckets; i++)
-  {
-    for (node = m_buckets[i]; node != 0; node = node->m_next)
+  // find the first eligible entry 
+  for (size_t i = 0; i < m_nBuckets; i++) 
     {
-      if (node->m_npe)
-      {
-        // std::cout << "Bucket" << i << "\t" << node->m_npe->m_prefix.toUri() << std::endl;
-        ret->push_back(node->m_npe);
-      }
+      for (name_tree::Node* node = m_buckets[i]; node != 0; node = node->m_next) 
+        {
+          if (static_cast<bool>(node->m_entry) && entrySelector(*node->m_entry)) 
+            {
+              const_iterator it(FULL_ENUMERATE_TYPE, *this, node->m_entry, entrySelector);
+              return it;
+            }
+        }
     }
-  }
 
-  return ret;
+  // If none of the entry satisfies the requirements, then return the end() iterator.
+  return end();
 }
 
-// Helper function for partialEnumerate()
-void 
-NameTree::partialEnumerateAddChildren(Entry* npe, std::vector<Entry *> * ret)
+NameTree::const_iterator
+NameTree::partialEnumerate(const Name& prefix, 
+  const name_tree::EntrySubTreeSelector& entrySubTreeSelector)
 {
-  assert(npe != 0);
+  // the first step is to process the root node
+  shared_ptr<name_tree::Entry> entry = findExactMatch(prefix);
+  if (!static_cast<bool>(entry))
+    {
+      return end();
+    }
 
-  ret->push_back(npe);
-  for (size_t i = 0; i < npe->m_childrenList.size(); i++)
-  {
-    Entry* temp = npe->m_childrenList[i];
-    partialEnumerateAddChildren(temp, ret);
-  }
+  std::pair<bool, bool>result = entrySubTreeSelector(*entry);
+  const_iterator it(PARTIAL_ENUMERATE_TYPE, 
+                    *this, 
+                    entry,
+                    name_tree::AnyEntry(), 
+                    entrySubTreeSelector);
+
+  it.m_visitChildren = (result.second && entry->hasChildren());
+
+  if (result.first)
+    {
+      // root node is acceptable
+      return it;
+    }
+  else
+    {
+      // let the ++ operator handle it
+      ++it;
+      return it;
+    }
 }
 
-std::vector<Entry *> *
-NameTree::partialEnumerate(const Name& prefix)
+NameTree::const_iterator
+NameTree::findAllMatches(const Name& prefix,
+                         const name_tree::EntrySelector& entrySelector)
 {
-  std::vector<Entry *> * ret = new std::vector<nt::Entry *>;
-  ret->clear();
+  NFD_LOG_DEBUG("NameTree::findAllMatches" << prefix);
 
-  // find the hash bucket corresponding to that prefix
-  Entry * npe = lookup(prefix);
+  // As we are using Name Prefix Hash Table, and the current LPM() is
+  // implemented as starting from full name, and reduce the number of
+  // components by 1 each time, we could use it here.
+  // For trie-like design, it could be more efficient by walking down the
+  // trie from the root node.
 
-  if (npe == 0){
-    return ret;
-  } else {
-    // go through its children list via depth-first-search
-    ret->push_back(npe);
-    for (size_t i = 0; i < npe->m_childrenList.size(); i++)
+  shared_ptr<name_tree::Entry> entry = findLongestPrefixMatch(prefix, entrySelector);
+
+  if (static_cast<bool>(entry)) 
     {
-      Entry* temp = npe->m_childrenList[i];
-      partialEnumerateAddChildren(temp, ret);
+      const_iterator it(FIND_ALL_MATCHES_TYPE, *this, entry, entrySelector);
+      return it;
     }
-  }
-
-  return ret;
+  // If none of the entry satisfies the requirements, then return the end() iterator.
+  return end();
 }
 
 // Hash Table Resize
 void
-NameTree::resize(int newNBuckets)
+NameTree::resize(size_t newNBuckets)
 {
-  if (debug > 5) 
-    std::cout << "NameTree::resize()" << std::endl;
+  NFD_LOG_DEBUG("resize");
 
-  Node** newBuckets = new Node*[newNBuckets];
-  int count = 0;
+  name_tree::Node** newBuckets = new name_tree::Node*[newNBuckets];
+  size_t count = 0;
 
-  // referenced ccnx hashtb.c hashtb_rehash() 
-
-  Node** pp = 0;
-  Node* p = 0;
-  Node* pre = 0;
-  Node* q = 0; // record p->m_next
-  int i;
+  // referenced ccnx hashtb.c hashtb_rehash()
+  name_tree::Node** pp = 0;
+  name_tree::Node* p = 0;
+  name_tree::Node* pre = 0;
+  name_tree::Node* q = 0; // record p->m_next
+  size_t i;
   uint32_t h;
   uint32_t b;
-  
+
   for (i = 0; i < newNBuckets; i++)
-    newBuckets[i] = 0;
+    {
+      newBuckets[i] = 0;
+    }
 
   for (i = 0; i < m_nBuckets; i++)
-  {
-    for (p = m_buckets[i]; p != 0; p = q) 
     {
-      count++;
-      q = p->m_next;
-      assert(p->m_npe != 0); // XXX FIXME keep the assert statement during testing phase
-      h = p->m_npe->m_hash;
-      b = h % newNBuckets;
-      for (pp = &newBuckets[b]; *pp != 0; pp = &((*pp)->m_next))
-      {
-        pre = *pp;
-        continue;
-      }
-      p->m_pre = pre;
-      p->m_next = *pp; // Actually *pp always == 0 in this case
-      *pp = p;
+      for (p = m_buckets[i]; p != 0; p = q)
+        {
+          count++;
+          q = p->m_next;
+          BOOST_ASSERT(static_cast<bool>(p->m_entry));
+          h = p->m_entry->m_hash;
+          b = h % newNBuckets;
+          for (pp = &newBuckets[b]; *pp != 0; pp = &((*pp)->m_next))
+            {
+              pre = *pp;
+              continue;
+            }
+          p->m_prev = pre;
+          p->m_next = *pp; // Actually *pp always == 0 in this case
+          *pp = p;
+        }
     }
-  }
 
-  assert(count == m_n);
+  BOOST_ASSERT(count == m_nItems);
+
+  name_tree::Node** oldBuckets = m_buckets;
+  m_buckets = newBuckets;
+  delete oldBuckets;
 
   m_nBuckets = newNBuckets;
-  Node** oldBuckets = m_buckets;
-  m_buckets = newBuckets;
-
-  delete oldBuckets;
+  m_resizeThreshold = (int)(m_loadFactor * (double)m_nBuckets);
 }
 
 // For debugging
-void 
-NameTree::dump()
+void
+NameTree::dump(std::ostream& output)
 {
-  if (debug != 0)
-  {
-    Node* node = 0;
-    Entry* npe;
+  NFD_LOG_DEBUG("dump()");
 
-    if (debug > 4) 
-      std::cout << "dump() --------------------------\n";
+  name_tree::Node* node = 0;
+  shared_ptr<name_tree::Entry> entry;
 
-    for (int i = 0; i < m_nBuckets; i++){
-      for (node = m_buckets[i]; node != 0; node = node->m_next){
-        npe = node->m_npe;
+  using std::endl;
 
-        // if the NPE exist, dump its information 
-        if (npe != 0){
-          std::cout << "Bucket" << i << "\t" << npe->m_prefix.toUri() << std::endl;
-          std::cout << "\t\tHash " << npe->m_hash << std::endl;
+  for (size_t i = 0; i < m_nBuckets; i++)
+    {
+      for (node = m_buckets[i]; node != 0; node = node->m_next)
+        {
+          entry = node->m_entry;
 
-          if (npe->m_parent != 0){
-            std::cout << "\t\tparent->" << npe->m_parent->m_prefix.toUri();
-          } else {
-            std::cout << "\t\tROOT";
-          }
-          std::cout << std::endl;
+          // if the Entry exist, dump its information
+          if (static_cast<bool>(entry))
+            {
+              output << "Bucket" << i << "\t" << entry->m_prefix.toUri() << endl;
+              output << "\t\tHash " << entry->m_hash << endl;
 
-          if (npe->m_children != 0){
-            std::cout << "\t\tchildren = " << npe->m_children << std::endl;
-            
-            for (size_t j = 0; j < npe->m_childrenList.size(); j++){
-              std::cout << "\t\t\tChild " << j << " " << 
-                npe->m_childrenList[j]->getPrefix().toUri() << std::endl;
-            }
-          }
+              if (static_cast<bool>(entry->m_parent))
+                {
+                  output << "\t\tparent->" << entry->m_parent->m_prefix.toUri();
+                }
+              else
+                {
+                  output << "\t\tROOT";
+                }
+              output << endl;
 
-        } // if npe != 0
+              if (entry->m_children.size() != 0)
+                {
+                  output << "\t\tchildren = " << entry->m_children.size() << endl;
 
-      } // for node
+                  for (size_t j = 0; j < entry->m_children.size(); j++)
+                    {
+                      output << "\t\t\tChild " << j << " " <<
+                        entry->m_children[j]->getPrefix() << endl;
+                    }
+                }
+
+            } // if (static_cast<bool>(entry))
+
+        } // for node
     } // for int i
 
-    std::cout << "Bucket count = " << m_nBuckets << std::endl;
-    std::cout << "Stored item = " << m_n << std::endl;
-    std::cout << "--------------------------\n";
-  }
+  output << "Bucket count = " << m_nBuckets << endl;
+  output << "Stored item = " << m_nItems << endl;
+  output << "--------------------------\n";
 }
 
-} // namespace nt
+NameTree::const_iterator::const_iterator(NameTree::IteratorType type, 
+                            const NameTree& nameTree,
+                            shared_ptr<name_tree::Entry> entry,
+                            const name_tree::EntrySelector& entrySelector,
+                            const name_tree::EntrySubTreeSelector& entrySubTreeSelector)
+  : m_nameTree(nameTree)
+  , m_entry(entry)
+  , m_subTreeRoot(entry)
+  , m_entrySelector(make_shared<name_tree::EntrySelector>(entrySelector))
+  , m_entrySubTreeSelector(make_shared<name_tree::EntrySubTreeSelector>(entrySubTreeSelector))
+  , m_type(type)
+  , m_visitChildren(true)
+{
+}
+
+// operator++()
+NameTree::const_iterator 
+NameTree::const_iterator::operator++()
+{
+  NFD_LOG_DEBUG("const_iterator::operator++()");
+
+  if (m_type == FULL_ENUMERATE_TYPE) // fullEnumerate
+    {
+      bool isFound = false;
+      // process the entries in the same bucket first
+      while (m_entry->m_node->m_next != 0)
+        {
+          m_entry = m_entry->m_node->m_next->m_entry;
+          if ((*m_entrySelector)(*m_entry))
+            {
+              isFound = true;
+              return *this;
+            }
+        }
+
+      // process other buckets
+      int newLocation = m_entry->m_hash % m_nameTree.m_nBuckets + 1;
+      for (newLocation = newLocation; newLocation < m_nameTree.m_nBuckets; newLocation++)
+        {
+          // process each bucket
+          name_tree::Node* node = m_nameTree.m_buckets[newLocation];
+          while (node != 0)
+            {
+              m_entry = node->m_entry;
+              if ((*m_entrySelector)(*m_entry))
+                {
+                  isFound = true;
+                  return *this;
+                }
+              node = node->m_next;
+            }
+        }
+      BOOST_ASSERT(isFound == false);
+      // Reach to the end()
+      m_entry = m_nameTree.m_end;
+      return *this;
+    }
+
+  if (m_type == PARTIAL_ENUMERATE_TYPE) // partialEnumerate
+    {
+      // We use pre-order traversal.
+      // if at the root, it could have already been accepted, or this
+      // iterator was just declared, and root doesn't satisfy the
+      // requirement
+      // The if() section handles this special case
+      // Essentially, we need to check root's fist child, and the rest will
+      // be the same as normal process
+      if (m_entry == m_subTreeRoot)
+        {
+          if (m_visitChildren)
+            {
+              m_entry = m_entry->getChildren()[0];
+              std::pair<bool, bool> result = ((*m_entrySubTreeSelector)(*m_entry));
+              m_visitChildren = (result.second && m_entry->hasChildren());
+              if(result.first)
+                {
+                  return *this;
+                }
+              else
+                {
+                  // the first child did not meet the requirement
+                  // the rest of the process can just fall through the while loop
+                  // as normal
+                }
+            }
+          else 
+            {
+              // no children, should return end();
+              // just fall through
+            }
+        }
+
+      // The first thing to do is to visit its child, or go to find its possible
+      // siblings
+      while (m_entry != m_subTreeRoot)
+        {
+          if (m_visitChildren) 
+            {
+              // If this subtree should be visited
+              m_entry = m_entry->getChildren()[0];
+              std::pair<bool, bool> result = ((*m_entrySubTreeSelector)(*m_entry));
+              m_visitChildren = (result.second && m_entry->hasChildren());
+              if (result.first) // if this node is acceptable
+                {
+                  return *this;
+                }
+              else
+                {
+                  // do nothing, as this node is essentially ignored
+                  // send this node to the while loop.
+                }
+            }
+          else 
+            {
+              // Should try to find its sibling
+              shared_ptr<name_tree::Entry> parent = m_entry->getParent();
+
+              std::vector<shared_ptr<name_tree::Entry> >& parentChildrenList = parent->getChildren();
+              bool isFound = false;
+              size_t i = 0;
+              for (i = 0; i < parentChildrenList.size(); i++)
+                {
+                  if (parentChildrenList[i] == m_entry)
+                    {
+                      isFound = true;
+                      break;
+                    }
+                }
+              
+              BOOST_ASSERT(isFound == true);
+              if (i < parentChildrenList.size() - 1) // m_entry not the last child
+                {
+                  m_entry = parentChildrenList[i + 1];
+                  std::pair<bool, bool> result = ((*m_entrySubTreeSelector)(*m_entry));
+                  m_visitChildren = (result.second && m_entry->hasChildren());
+                  if (result.first) // if this node is acceptable
+                    {
+                      return *this;
+                    }
+                  else
+                    {
+                      // do nothing, as this node is essentially ignored
+                      // send this node to the while loop.
+                    }
+                }
+              else
+                {
+                  // m_entry is the last child, no more sibling, should try to find parent's sibling
+                  m_visitChildren = false;
+                  m_entry = parent;
+                }
+            }
+        }
+
+      m_entry = m_nameTree.m_end;
+      return *this;
+    }
+
+  if (m_type == FIND_ALL_MATCHES_TYPE) // findAllMatches
+    {
+      // Assumption: at the beginning, m_entry was initialized with the first
+      // eligible Name Tree entry (i.e., has a PIT entry that can be satisfied
+      // by the Data packet)
+
+      while (static_cast<bool>(m_entry->getParent()))
+        {
+          m_entry = m_entry->getParent();
+          if ((*m_entrySelector)(*m_entry))
+            return *this;
+        }
+
+      // Reach to the end (Root)
+      m_entry = m_nameTree.m_end;
+      return *this;
+    }
+}
+
 } // namespace nfd
